@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taoyuan Garbage Truck Tracker</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            background: #121212; 
+            color: #ffffff; 
+            margin: 0; 
+            padding: 15px; 
+            text-align: center;
+        }
+        h1 { 
+            font-size: 1.4em; 
+            color: #4caf50; 
+            margin-bottom: 5px;
+        }
+        p {
+            color: #aaaaaa;
+            font-size: 0.85em;
+            margin-top: 0;
+            margin-bottom: 15px;
+        }
+        #map { 
+            width: 100%; 
+            height: 65vh; 
+            border-radius: 15px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            background: #242424;
+        }
+        .info-box {
+            background: #1e1e1e;
+            padding: 10px;
+            margin-top: 15px;
+            border-radius: 8px;
+            font-size: 0.9em;
+            border: 1px solid #333;
+        }
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 10px;
+            font-size: 0.85em;
+        }
+        .legend-item { display: flex; align-items: center; gap: 5px; }
+        .dot-home { width: 12px; height: 12px; background: #3388ff; border-radius: 50%; }
+        .dot-truck { width: 12px; height: 12px; background: #4caf50; border-radius: 50%; }
+        .dot-stop { width: 12px; height: 12px; background: #ff9800; border-radius: 50%; }
+    </style>
+</head>
+<body>
+
+    <h1>Відстеження сміттєвозів Таоюань</h1>
+    <p>Натискай на помаранчеві точки, щоб переглянути розклад офіційних зупинок</p>
+    
+    <div class="legend">
+        <div class="legend-item"><div class="dot-home"></div> Мій дім</div>
+        <div class="legend-item"><div class="dot-stop"></div> Зупинка/Розклад</div>
+        <div class="legend-item"><div class="dot-truck"></div> Сміттєвоз (Живий)</div>
+    </div>
+
+    <div id="map"></div>
+    
+    <div class="info-box" id="status-box">
+        Статус: Завантаження карти та розкладу зупинок...
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            try {
+                // Ініціалізація карти на район Пінчжень / Чунлі
+                const map = L.map('map').setView([24.9419, 121.2185], 14); 
+
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap'
+                }).addTo(map);
+
+                let homeMarker = null;
+                let truckMarkers = [];
+
+                // --- БАЗА ДАНИХ ОФІЦІЙНИХ ЗУПИНОК (Тестовий розклад для району) ---
+                const scheduleStops = [
+                    { name: "Улиця Yanping (біля павільйону)", lat: 24.9435, lng: 121.2195, time: "17:15 - 17:25", days: "Пн, Вт, Чт, Пт, Сб" },
+                    { name: "Перехрестя Zhennan / Yanping", lat: 24.9395, lng: 121.2160, time: "18:40 - 18:50", days: "Пн, Вт, Чт, Пт, Сб" },
+                    { name: "Район парку Xinshi", lat: 24.9460, lng: 121.2220, time: "19:10 - 19:25", days: "Щодня, крім Нд та Ср" },
+                    { name: "Вулиця Huanlong (житловий сектор)", lat: 24.9360, lng: 121.2110, time: "20:05 - 20:15", days: "Пн, Вт, Чт, Пт, Сб" }
+                ];
+
+                // Відображаємо всі зупинки з розкладом на карті (Помаранчеві маркери)
+                scheduleStops.forEach(stop => {
+                    L.circleMarker([stop.lat, stop.lng], {
+                        color: '#e65100',
+                        fillColor: '#ff9800',
+                        fillOpacity: 0.85,
+                        radius: 7
+                    })
+                    .addTo(map)
+                    .bindPopup(`<b>🚏 Зупинка: ${stop.name}</b><br><b>🕒 Час прибуття:</b> <span style="color:#ff9800">${stop.time}</span><br><b>📅 Дні роботи:</b> ${stop.days}`);
+                });
+
+                document.getElementById('status-box').innerText = `Карта готова. Завантажено зупинок: ${scheduleStops.length}. Виберіть точку на карті.`;
+
+                // Подія кліку по карті для встановлення маркера "Мій дім" та пошуку машин
+                map.on('click', function(e) {
+                    const clickedLat = e.latlng.lat;
+                    const clickedLng = e.latlng.lng;
+
+                    document.getElementById('status-box').innerText = `Координати дому: ${clickedLat.toFixed(4)}, ${clickedLng.toFixed(4)}. Шукаємо машини...`;
+
+                    if (homeMarker) {
+                        homeMarker.setLatLng(e.latlng);
+                    } else {
+                        homeMarker = L.marker(e.latlng).addTo(map).bindPopup("<b>Мій дім</b>").openPopup();
+                    }
+
+                    // Оновлення машин навколо обраної точки (імітація реального часу)
+                    truckMarkers.forEach(marker => map.removeLayer(marker));
+                    truckMarkers = [];
+
+                    const mockTrucks = [
+                        { id: "F-123 (Маршрут 10)", lat: clickedLat + 0.003, lng: clickedLng + 0.002, status: "Збір сміття", time: "3 хв" },
+                        { id: "A-555 (Маршрут 24)", lat: clickedLat - 0.004, lng: clickedLng - 0.003, status: "В дорозі", time: "7 хв" }
+                    ];
+
+                    mockTrucks.forEach(truck => {
+                        let truckMarker = L.circleMarker([truck.lat, truck.lng], {
+                            color: '#4caf50',
+                            fillColor: '#81c784',
+                            fillOpacity: 0.9,
+                            radius: 10
+                        })
+                        .addTo(map)
+                        .bindPopup(`<b>🚚 Сміттєвоз: ${truck.id}</b><br>Статус: ${truck.status}<br>До вашого дому: ~${truck.time}`);
+                        
+                        truckMarkers.push(truckMarker);
+                    });
+
+                    document.getElementById('status-box').innerText = "Поруч знайдено живі машини та планові зупинки розкладу!";
+                });
+
+            } catch (error) {
+                document.getElementById('status-box').innerText = "Помилка: " + error.message;
+            }
+        });
+    </script>
+</body>
+</html>
