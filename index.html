@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taoyuan Garbage Truck Tracker</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            background: #121212; 
+            color: #ffffff; 
+            margin: 0; 
+            padding: 15px; 
+            text-align: center;
+        }
+        h1 { 
+            font-size: 1.5em; 
+            color: #4caf50; 
+            margin-bottom: 5px;
+        }
+        p {
+            color: #aaaaaa;
+            font-size: 0.9em;
+            margin-top: 0;
+            margin-bottom: 15px;
+        }
+        #map { 
+            width: 100%; 
+            height: 65vh; 
+            border-radius: 15px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            background: #242424; /* Сірий фон на час завантаження */
+        }
+        .info-box {
+            background: #1e1e1e;
+            padding: 10px;
+            margin-top: 15px;
+            border-radius: 8px;
+            font-size: 0.9em;
+            border: 1px solid #333;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Відстеження сміттєвозів Таоюань</h1>
+    <p>Тицьни пальцем у будь-яку точку на карті, щоб знайти машини поруч</p>
+    
+    <div id="map"></div>
+    
+    <div class="info-box" id="status-box">
+        Статус: Завантаження карти...
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            try {
+                // Ініціалізація карти (координати Пінчженя)
+                const map = L.map('map').setView([24.9419, 121.2185], 13); 
+
+                // Виправлено підключення шарів карти через HTTPS
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap'
+                }).addTo(map);
+
+                document.getElementById('status-box').innerText = "Карта готова. Очікування вибору точки...";
+
+                let homeMarker = null;
+                let truckMarkers = [];
+
+                // Подія кліку по карті
+                map.on('click', function(e) {
+                    const clickedLat = e.latlng.lat;
+                    const clickedLng = e.latlng.lng;
+
+                    document.getElementById('status-box').innerText = `Обрано: ${clickedLat.toFixed(4)}, ${clickedLng.toFixed(4)}. Шукаємо машини...`;
+
+                    if (homeMarker) {
+                        homeMarker.setLatLng(e.latlng);
+                    } else {
+                        homeMarker = L.marker(e.latlng).addTo(map).bindPopup("<b>Мій дім</b>").openPopup();
+                    }
+
+                    // Симуляція оновлення машин
+                    truckMarkers.forEach(marker => map.removeLayer(marker));
+                    truckMarkers = [];
+
+                    const mockTrucks = [
+                        { id: "F-123 (Маршрут 10)", lat: clickedLat + 0.003, lng: clickedLng + 0.002, status: "Збір сміття", time: "3 хв" },
+                        { id: "A-555 (Маршрут 24)", lat: clickedLat - 0.004, lng: clickedLng - 0.003, status: "В дорозі", time: "7 хв" }
+                    ];
+
+                    mockTrucks.forEach(truck => {
+                        let truckMarker = L.circleMarker([truck.lat, truck.lng], {
+                            color: '#4caf50',
+                            fillColor: '#81c784',
+                            fillOpacity: 0.9,
+                            radius: 10
+                        })
+                        .addTo(map)
+                        .bindPopup(`<b>Сміттєвоз: ${truck.id}</b><br>Статус: ${truck.status}<br>Прибуття: ${truck.time}`);
+                        
+                        truckMarkers.push(truckMarker);
+                    });
+
+                    document.getElementById('status-box').innerText = "Машини знайдено навколо вашого дому!";
+                });
+
+            } catch (error) {
+                document.getElementById('status-box').innerText = "Помилка завантаження карти: " + error.message;
+            }
+        });
+    </script>
+</body>
+</html>
