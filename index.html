@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Racer Smart Anti-Radar</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; 
+            background: #121212; 
+            color: #ffffff; 
+            text-align: center; 
+            padding: 20px;
+            margin: 0;
+        }
+        h1 {
+            font-size: 1.8em;
+            color: #ff9800;
+            margin-top: 10px;
+        }
+        .status { 
+            font-size: 1em; 
+            color: #aaaaaa; 
+            margin: 10px 0;
+            background: #1e1e1e;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        .alert { 
+            font-size: 1.8em; 
+            font-weight: bold; 
+            padding: 40px 20px; 
+            border-radius: 15px; 
+            margin: 20px 0; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            transition: background 0.3s ease;
+        }
+        .safe { 
+            background: #1b5e20; 
+            border: 2px solid #4caf50;
+        }
+        .danger { 
+            background: #b71c1c; 
+            border: 2px solid #f44336;
+            animation: blink 0.8s infinite; 
+        }
+        .camera-info {
+            font-size: 0.6em;
+            font-weight: normal;
+            display: block;
+            margin-top: 10px;
+            color: #e0e0e0;
+        }
+        @keyframes blink { 
+            0% { opacity: 1; } 
+            50% { opacity: 0.4; } 
+            100% { opacity: 1; } 
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Racer Smart Speed Radar</h1>
+    
+    <div class="status" id="gps-status">Ініціалізація GPS...</div>
+    <div class="status" id="current-coords">Координати: --, --</div>
+    
+    <div id="radar-screen" class="alert safe">
+        Усе чисто
+    </div>
+
+    <script>
+        // База даних камер: Пінчжень, Чунлі, Лунтань та швидкісні траси поруч
+        const cameraDatabase = [
+            // 📍 ПІНЧЖЕНЬ (Pingzhen District)
+            { id: 101, name: "Пінчжень: Yanping Rd / Sec 3 & Niuwei Rd", lat: 24.92842, lng: 121.20173, limit: 60 },
+            { id: 102, name: "Пінчжень: Zhongfeng Rd / Sec 1 (near Lane 128)", lat: 24.94585, lng: 121.22415, limit: 50 },
+            { id: 103, name: "Пінчжень: Jinling Rd / Sec 2 & Heping Rd", lat: 24.94912, lng: 121.23351, limit: 50 },
+            { id: 104, name: "Пінчжень: Huanan Rd (near Pingzhen High School)", lat: 24.94191, lng: 121.21852, limit: 50 },
+            { id: 105, name: "Пінчжень: Loushan Rd / Sec 2 & Zhenxing Rd", lat: 24.93510, lng: 121.23920, limit: 50 },
+
+            // 📍 ЧУНЛІ (Zhongli District)
+            { id: 201, name: "Чунлі: Yanping Rd (near Huanbei Rd)", lat: 24.96448, lng: 121.22550, limit: 50 },
+            { id: 202, name: "Чунлі: Zhongzheng Rd / Sec 4 (near No. 120)", lat: 24.96210, lng: 121.19230, limit: 60 },
+            { id: 203, name: "Чунлі: Chenggong Rd (near Sec 2)", lat: 24.97420, lng: 121.25140, limit: 50 },
+            { id: 204, name: "Чунлі: Puteng Rd / near Zhongshan East Rd", lat: 24.94890, lng: 121.25310, limit: 50 },
+            { id: 205, name: "Чунлі: Xinsheng Rd / Sec 2 (near Shengde Rd)", lat: 24.98930, lng: 121.22140, limit: 60 },
+            { id: 206, name: "Чунлі: High-Speed Rail South Rd / Sec 3", lat: 24.98110, lng: 121.20050, limit: 60 },
+
+            // 📍 ЛУНТАНЬ (Longtan District)
+            { id: 301, name: "Лунтань: Zhongzheng Rd (near No. 600, Sanhai Sec)", lat: 24.84850, lng: 121.23120, limit: 60 },
+            { id: 302, name: "Лунтань: Dayang Rd (near No. 138, Longyuan Sec)", lat: 24.86230, lng: 121.21450, limit: 50 },
+            { id: 303, name: "Лунтань: Fukang Rd (near Lane 51)", lat: 24.85120, lng: 121.20010, limit: 50 },
+            { id: 304, name: "Лунтань: Zhongfeng Rd / Kuan-Hsi Sec (near No. 250)", lat: 24.83140, lng: 121.19480, limit: 60 },
+            { id: 305, name: "Лунтань: Shenlong Rd (біля озера)", lat: 24.86815, lng: 121.20930, limit: 50 },
+
+            // 🛣️ ШВИДКІСНІ ТРАСИ
+            { id: 401, name: "Траса №1: Northbound 53.9K (Таоюань)", lat: 24.99210, lng: 121.28250, limit: 100 },
+            { id: 402, name: "Траса №1: Southbound 62.5K (Чунлі)", lat: 24.94120, lng: 121.21410, limit: 100 },
+            { id: 403, name: "Траса №3: Southbound 69.1K (Лунтань)", lat: 24.85540, lng: 121.24810, limit: 110 }
+        ];
+
+        const DANGER_DISTANCE_METERS = 500; // Дистанція попередження (метрів)
+
+        // Формула Гаверсину для розрахунку точної відстані
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; 
+            const phi1 = lat1 * Math.PI / 180;
+            const phi2 = lat2 * Math.PI / 180;
+            const deltaPhi = (lat2 - lat1) * Math.PI / 180;
+            const deltaLambda = (lon2 - lon1) * Math.PI / 180;
+
+            const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+                      Math.cos(phi1) * Math.cos(phi2) *
+                      Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+            return R * c; 
+        }
+
+        // Обробка координат GPS
+        function checkLocation(position) {
+            const userLat = position.coords.latitude;
+            const userLng = position.coords.longitude;
+            
+            document.getElementById('gps-status').innerText = "GPS підключено (Максимальна точність)";
+            document.getElementById('current-coords').innerText = `Координати: ${userLat.toFixed(5)}, ${userLng.toFixed(5)}`;
+
+            let closestCamera = null;
+            let minDistance = Infinity;
+
+            // Пошук найближчої камери
+            cameraDatabase.forEach(camera => {
+                const distance = calculateDistance(userLat, userLng, camera.lat, camera.lng);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestCamera = camera;
+                }
+            });
+
+            const screen = document.getElementById('radar-screen');
+
+            if (minDistance <= DANGER_DISTANCE_METERS) {
+                // Якщо камера ближче ніж 500 метрів
+                screen.className = "alert danger";
+                screen.innerHTML = `УВАГА! КАМЕРА: ${Math.round(minDistance)}м<br>Обмеження: ${closestCamera.limit} км/год<span class="camera-info">${closestCamera.name}</span>`;
+                playWarningSound();
+            } else {
+                // Якщо камери поруч немає
+                screen.className = "alert safe";
+                const distText = minDistance > 1000 ? `${(minDistance / 1000).toFixed(1)} км` : `${Math.round(minDistance)} метрів`;
+                screen.innerHTML = `Усе чисто<span class="camera-info">Найближча камера за: ${distText} (${closestCamera.name})</span>`;
+            }
+        }
+
+        function handleGPSError(error) {
+            let msg = "Помилка геолокації";
+            if (error.code === 1) msg = "Будь ласка, дозволь доступ до GPS у налаштуваннях браузера.";
+            if (error.code === 2) msg = "Не вдалося визначити координати GPS.";
+            if (error.code === 3) msg = "Таймаут пошуку GPS.";
+            document.getElementById('gps-status').innerText = msg;
+        }
+
+        // Аудіо-сигнал для попередження
+        let audioCtx = null;
+        function playWarningSound() {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                let osc = audioCtx.createOscillator();
+                let gainNode = audioCtx.createGain();
+                
+                osc.type = 'sine';
+                osc.frequency.value = 900; 
+                
+                gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                
+                osc.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.15); 
+            } catch(e) {
+                console.log("Звук заблоковано політикою браузера.");
+            }
+        }
+
+        // Старт GPS трекінгу
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(checkLocation, handleGPSError, {
+                enableHighAccuracy: true, 
+                maximumAge: 0,
+                timeout: 10000
+            });
+        } else {
+            document.getElementById('gps-status').innerText = "Цей браузер не підтримує GPS.";
+        }
+    </script>
+</body>
+</html>
