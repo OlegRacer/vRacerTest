@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Racer Smart Anti-Radar Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #222; color: #fff; text-align: center; padding: 20px; }
+        .status { font-size: 1.2em; color: #aaa; margin-bottom: 20px; }
+        .alert { font-size: 2em; font-weight: bold; padding: 20px; border-radius: 10px; margin-top: 20px; }
+        .safe { background: #2e7d32; }
+        .danger { background: #c62828; animation: blink 1s infinite; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+    <h1>Racer Smart (Тест камер)</h1>
+    <div class="status" id="gps-status">Пошук GPS...</div>
+    <div class="status" id="current-coords">Координати: --, --</div>
+    
+    <div id="radar-screen" class="alert safe">Усе чисто</div>
+
+    <script>
+        // Тестова база даних (координати для прикладу)
+        // Заміни ці точки на реальні координати з тайванського CSV
+        const cameraDatabase = [
+            { id: 1, name: "Камера 1 (Xinyi Rd)", lat: 25.0330, lng: 121.5654, limit: 50 },
+            { id: 2, name: "Камера 2 (Test)", lat: 25.0420, lng: 121.5320, limit: 60 },
+            // Сюди можна буде додати парсер, який автоматично закине масив із CSV
+        ];
+
+        const DANGER_DISTANCE_METERS = 500; // Дистанція попередження (500 метрів)
+
+        // Формула Гаверсину для розрахунку відстані між двома точками на Землі (в метрах)
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // Радіус Землі в метрах
+            const phi1 = lat1 * Math.PI / 180;
+            const phi2 = lat2 * Math.PI / 180;
+            const deltaPhi = (lat2 - lat1) * Math.PI / 180;
+            const deltaLambda = (lon2 - lon1) * Math.PI / 180;
+
+            const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+                      Math.cos(phi1) * Math.cos(phi2) *
+                      Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+            return R * c; // Відстань в метрах
+        }
+
+        // Головна функція перевірки локації
+        function checkLocation(position) {
+            const userLat = position.coords.latitude;
+            const userLng = position.coords.longitude;
+            
+            document.getElementById('gps-status').innerText = "GPS працює стабільно";
+            document.getElementById('current-coords').innerText = `Твої координати: ${userLat.toFixed(5)}, ${userLng.toFixed(5)}`;
+
+            let closestCamera = null;
+            let minDistance = Infinity;
+
+            // Шукаємо найближчу камеру в базі
+            cameraDatabase.forEach(camera => {
+                const distance = calculateDistance(userLat, userLng, camera.lat, camera.lng);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestCamera = camera;
+                }
+            });
+
+            const screen = document.getElementById('radar-screen');
+
+            // Якщо найближча камера ближче ніж 500 метрів
+            if (minDistance <= DANGER_DISTANCE_METERS) {
+                screen.className = "alert danger";
+                screen.innerHTML = `ОБЕРЕЖНО! Камера за ${Math.round(minDistance)}м<br>Обмеження: ${closestCamera.limit} км/год`;
+                
+                // Можна додати звуковий сигнал (beeper)
+                playWarningSound();
+            } else {
+                screen.className = "alert safe";
+                screen.innerHTML = `Усе чисто. Найближча камера за ${Math.round(minDistance / 1000)} км`;
+            }
+        }
+
+        function handleGPSError(error) {
+            document.getElementById('gps-status').innerText = "Помилка GPS: " + error.message;
+        }
+
+        // Функція для пищання (працює в більшості сучасних браузерів)
+        let audioCtx = null;
+        function playWarningSound() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            let osc = audioCtx.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.value = 800; // Частота звуку в Гц
+            osc.connect(audioCtx.destination);
+            osc.start();
+            setTimeout(() => osc.stop(), 150); // Пищить 150 мілісекунд
+        }
+
+        // Запуск відстеження геолокації в реальному часі (оновлюється при русі)
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(checkLocation, handleGPSError, {
+                enableHighAccuracy: true, // Вмикаємо максимальну точність (GPS)
+                maximumAge: 0,
+                timeout: 5000
+            });
+        } else {
+            document.getElementById('gps-status').innerText = "Браузер не підтримує GPS";
+        }
+    </script>
+</body>
+</html>
