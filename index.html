@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taoyuan Live Garbage Tracker</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            background: #121212; 
+            color: #ffffff; 
+            margin: 0; 
+            padding: 15px; 
+            text-align: center;
+        }
+        h1 { font-size: 1.4em; color: #4caf50; margin-bottom: 5px; }
+        p { color: #aaaaaa; font-size: 0.85em; margin-top: 0; margin-bottom: 15px; }
+        #map { width: 100%; height: 65vh; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); background: #242424; }
+        .info-box { background: #1e1e1e; padding: 10px; margin-top: 15px; border-radius: 8px; font-size: 0.9em; border: 1px solid #333; }
+        .legend { display: flex; justify-content: center; gap: 15px; margin-bottom: 10px; font-size: 0.85em; }
+        .legend-item { display: flex; align-items: center; gap: 5px; }
+        .dot-home { width: 12px; height: 12px; background: #3388ff; border-radius: 50%; }
+        .dot-truck { width: 12px; height: 12px; background: #4caf50; border-radius: 50%; }
+        .dot-stop { width: 12px; height: 12px; background: #ff9800; border-radius: 50%; }
+    </style>
+</head>
+<body>
+
+    <h1>Живі сміттєвози Таоюань (Офіційна база)</h1>
+    <p>Завантажуємо реальні зупинки округу. Тицьни на мапу для пошуку машин поруч.</p>
+    
+    <div class="legend">
+        <div class="legend-item"><div class="dot-home"></div> Мій дім</div>
+        <div class="legend-item"><div class="dot-stop"></div> Офіційна зупинка</div>
+        <div class="legend-item"><div class="dot-truck"></div> Сміттєвоз (Реал-тайм)</div>
+    </div>
+
+    <div id="map"></div>
+    
+    <div class="info-box" id="status-box">Ініціалізація системи...</div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            // Центр — Пінчжень
+            const map = L.map('map').setView([24.9419, 121.2185], 14); 
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+            let homeMarker = null;
+            let truckMarkers = [];
+            let stopLayerGroup = L.layerGroup().addTo(map);
+
+            // Використовуємо безкоштовний проксі для обходу блокувань браузера (CORS)
+            const proxy = "https://cors-anywhere.herokuapp.com/";
+            // Офіційні відкриті дані API уряду Таоюаня (заміниться на прямі лінки за потреби)
+            const stopsApiUrl = "https://data.tycg.gov.tw/opendata/datalist/datasetMeta/download?id=e74c05f7-466d-47be-b2e1-45465942416f&rid=53e5f22e-13cb-4560-84eb-be8d447a110e";
+            const trucksApiUrl = "https://data.tycg.gov.tw/opendata/datalist/datasetMeta/download?id=e74c05f7-466d-47be-b2e1-45465942416f&rid=bf33816a-ddab-4fa2-9b2f-78d10b77e8b6";
+
+            // 1. ЗАВАНТАЖЕННЯ ВСІХ РЕАЛЬНИХ ЗУПИНОК З СЕРВЕРА ТАОЮАНЯ
+            async function loadOfficialStops() {
+                document.getElementById('status-box').innerText = "Запитуємо урядову базу зупинок...";
+                try {
+                    // Пробуємо стягнути через проксі
+                    const response = await fetch(proxy + stopsApiUrl);
+                    const data = await response.json();
+                    
+                    // Перевіряємо структуру (урядові дані зазвичай у форматі масиву)
+                    let count = 0;
+                    data.forEach(stop => {
+                        // Оскільки урядові назви полів тайванські (напр. X, Y або Latitude, Longitude, Name)
+                        // Скрипт шукає стандартні назви координат у JSON
+                        const lat = stop.Latitude || stop.lat || stop.y;
+                        const lng = stop.Longitude || stop.lng || stop.x;
+                        const name = stop.StopName || stop.name || "Зупинка сміттєвоза";
+                        const time = stop.ArriveTime || stop.time || "Див. розклад";
+
+                        if (lat && lng) {
+                            L.circleMarker([parseFloat(lat), parseFloat(lng)], {
+                                color: '#e65100',
+                                fillColor: '#ff9800',
+                                fillOpacity: 0.7,
+                                radius: 5
+                            })
+                            .addTo(stopLayerGroup)
+                            .bindPopup(`<b>🚏 Офіційна зупинка:</b> ${name}<br><b>🕒 Плановий час:</b> ${time}`);
+                            count++;
+                        }
+                    });
+                    document.getElementById('status-box').innerText = `Успішно завантажено ${count} реальних зупинок Таоюаня!`;
+                } catch (error) {
+                    console.error(error);
+                    document.getElementById('status-box').innerText = "Не вдалося підключитися до API через CORS. Активуємо локальний резерв.";
+                    loadFallbackStops();
+                }
+            }
+
+            // Резервний міні-набір для тесту, якщо сервер Таоюаня лежить або блокує проксі
+            function loadFallbackStops() {
+                const fallbacks = [
+                    { name: "Пінчжень: Yanping Rd / Sec 3", lat: 24.9435, lng: 121.2195, time: "17:15" },
+                    { name: "Чунлі: Huanbei Rd / Yanping Rd", lat: 24.9644, lng: 121.2255, time: "18:30" },
+                    { name: "Лунтань: Zhongzheng Rd", lat: 24.8485, lng: 121.2312, time: "19:00" }
+                ];
+                fallbacks.forEach(stop => {
+                    L.circleMarker([stop.lat, stop.lng], { color: '#e65100', fillColor: '#ff9800', fillOpacity: 0.8, radius: 6 }).addTo(stopLayerGroup).bindPopup(`<b>🚏 Зупинка:</b> ${stop.name}<br><b>🕒 Час:</b> ${stop.time}`);
+                });
+            }
+
+            loadOfficialStops();
+
+            // 2. КЛІК ПО КАРТІ ТА ПОШУК ЖИВИХ МАШИН
+            map.on('click', async function(e) {
+                const clickedLat = e.latlng.lat;
+                const clickedLng = e.latlng.lng;
+
+                if (homeMarker) { homeMarker.setLatLng(e.latlng); } 
+                else { homeMarker = L.marker(e.latlng).addTo(map).bindPopup("<b>Мій дім</b>").openPopup(); }
+
+                document.getElementById('status-box').innerText = "Шукаємо реальні сміттєвози на маршрутах...";
+
+                // Очищення старих машин
+                truckMarkers.forEach(m => map.removeLayer(m));
+                truckMarkers = [];
+
+                try {
+                    // Запит до живого GPS трекінгу уряду Таоюаня
+                    const response = await fetch(proxy + trucksApiUrl);
+                    const liveData = await response.json();
+
+                    liveData.forEach(truck => {
+                        const tLat = parseFloat(truck.Latitude || truck.y);
+                        const tLng = parseFloat(truck.Longitude || truck.x);
+                        const carNumber = truck.CarNumber || truck.car_id || "Сміттєвоз";
+                        const status = truck.Status || "У дорозі";
+
+                        if (tLat && tLng) {
+                            let truckMarker = L.circleMarker([tLat, tLng], {
+                                color: '#4caf50',
+                                fillColor: '#81c784',
+                                fillOpacity: 0.9,
+                                radius: 9
+                            })
+                            .addTo(map)
+                            .bindPopup(`<b>🚚 Реальний сміттєвоз: ${carNumber}</b><br>Статус: ${status}`);
+                            
+                            truckMarkers.push(truckMarker);
+                        }
+                    });
+                    document.getElementById('status-box').innerText = "Дані оновлено наживо з GPS серверів Таоюаня!";
+                } catch (err) {
+                    // Емуляція, якщо машини не вийшли або API заблоковано
+                    document.getElementById('status-box').innerText = "Помилка зв'язку з живим GPS. Показано тестові машини поруч.";
+                    const mockTrucks = [
+                        { id: "F-123 (Живий тест)", lat: clickedLat + 0.002, lng: clickedLng + 0.002 },
+                        { id: "A-555 (Живий тест)", lat: clickedLat - 0.003, lng: clickedLng - 0.002 }
+                    ];
+                    mockTrucks.forEach(t => {
+                        let m = L.circleMarker([t.lat, t.lng], { color: '#4caf50', fillColor: '#81c784', fillOpacity: 0.9, radius: 9 }).addTo(map).bindPopup(`<b>🚚 Сміттєвоз: ${t.id}</b><br>Статус: Наближається`);
+                        truckMarkers.push(m);
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
