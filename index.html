@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>aRacer Dash</title>
+<style>
+:root{\n  --bg:#000;--panel:#0d0d0f;--line:rgba(255,255,255,0.07);\n  --text:#f2f2f0;--muted:#666;\n  --cyan:#37e0e6;--amber:#ffb74d;--red:#ff4d4d;\n  --green:#4ade80;--blue:#3b82f6;--yellow:#ffd23f;\n  --th:48px;\n}\n*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;\n  user-select:none;-webkit-user-select:none;touch-action:manipulation;}\nhtml,body{margin:0;padding:0;height:100%;width:100%;\n  background:#000;color:var(--text);\n  font-family:'Rajdhani','Segoe UI',sans-serif;\n  overflow:hidden;-webkit-font-smoothing:antialiased;}\n\n/* TOPBAR */\n.tb{position:fixed;top:0;left:0;right:0;z-index:50;\n  display:flex;align-items:center;gap:5px;\n  padding:max(5px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) 5px max(10px,env(safe-area-inset-left));\n  background:rgba(0,0,0,0.6);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);\n  border-bottom:1px solid var(--line);height:var(--th);}\n.tbi{display:flex;align-items:center;justify-content:center;\n  width:38px;height:32px;border-radius:6px;\n  background:var(--panel);border:1px solid var(--line);\n  font-size:14px;font-weight:600;color:var(--text);transition:all 0.15s;}\n.tbi.active{background:var(--cyan);color:#000;border-color:var(--cyan);}\n.tbi.err{background:var(--red);color:#000;border-color:var(--red);}\n.tbi.warn{background:var(--amber);color:#000;border-color:var(--amber);}\n.tbi.ok{background:var(--green);color:#000;border-color:var(--green);}\n.tbi:active{transform:scale(0.95);opacity:0.8;}\n.tbi.stst{font-size:11px;font-weight:700;letter-spacing:-0.5px;}\n.tbf{flex:1;}\n\n/* DASHBOARD LAYOUT */\n.db{position:absolute;top:var(--th);bottom:0;left:0;right:0;\n  padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));\n  display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:minmax(80px,1fr);gap:10px;overflow-y:auto;}\n\n/* TILES */\n.tl{background:var(--panel);border:1px solid var(--line);border-radius:12px;\n  padding:10px;display:flex;flex-direction:column;position:relative;overflow:hidden;\n  transition:border-color 0.2s,box-shadow 0.2s;}\n.tl.s1{grid-column:span 1;grid-row:span 1;}\n.tl.s21{grid-column:span 2;grid-row:span 1;}\n.tl.s22{grid-column:span 2;grid-row:span 2;}\n.tl.edit-mode{border-color:var(--cyan);box-shadow:0 0 8px rgba(55,224,230,0.15);cursor:pointer;}\n.tl.edit-mode::after{content:'⚙';position:absolute;top:5px;right:5px;font-size:12px;color:var(--cyan);opacity:0.8;}\n\n/* TILE CONTENT */\n.tn{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;}\n.tv-w{flex:1;display:flex;align-items:baseline;min-height:0;}\n.tv{font-size:38px;font-weight:700;font-family:monospace;line-height:1;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}\n.tl.s21 .tv{font-size:46px;}\n.tl.s22 .tv{font-size:64px;}\n.tu{font-size:14px;font-weight:600;color:var(--muted);margin-left:4px;}\n\n/* GAUGE STYLES */\n.g-w{position:absolute;bottom:0;left:0;right:0;height:6px;background:rgba(255,255,255,0.03);}\n.g-b{height:100%;width:0%;transition:width 0.1s linear,background-color 0.2s;}\n\n/* EDIT MODAL */\n.em{position:fixed;top:0;bottom:0;left:0;right:0;z-index:100;\n  background:rgba(0,0,0,0.75);backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px);\n  display:flex;justify-content:flex-end;opacity:0;pointer-events:none;transition:opacity 0.25s;}\n.em.sh{opacity:1;pointer-events:auto;}\n.em-c{width:100%;max-width:380px;background:#000;border-left:1px solid var(--line);\n  height:100%;display:flex;flex-direction:column;transform:translateX(50px);transition:transform 0.25s;}\n.em.sh .em-c{transform:translateX(0);}\n.em-h{padding:15px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:between;}\n.em-t{font-size:18px;font-weight:700;margin:0;flex:1;}\n.em-x{background:none;border:none;color:var(--text);font-size:24px;cursor:pointer;padding:5px;line-height:1;}\n.em-b{flex:1;overflow-y:auto;padding:15px;}\n\n/* EDIT ITEMS */\n.gt{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin:15px 0 8px 0;}\n.gt:first-child{margin-top:0;}\n.pl,.sr,.szr{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}\n.pl{grid-template-columns:1fr;}\n.pi,.sb{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px;calc-size:auto;\n  display:flex;align-items:center;justify-content:between;cursor:pointer;transition:all 0.15s;}\n.sb{justify-content:center;font-weight:600;font-size:14px;padding:12px 8px;}\n.pi:active,.sb:active{transform:scale(0.98);}\n.pi.sel,.sb.sel{border-color:var(--cyan);background:rgba(55,224,230,0.05);}\n.pn2{font-weight:600;font-size:14px;}\n.pc{font-size:11px;color:var(--muted);margin-left:5px;font-weight:500;}\n.ck{color:var(--cyan);font-weight:700;display:none;}\n.pi.sel .ck{display:block;}\n.ab{width:100%;background:var(--panel);border:1px solid var(--line);color:var(--text);\n  border-radius:8px;padding:12px;font-weight:600;font-size:14px;cursor:pointer;margin-top:10px;\n  display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.15s;}\n.ab:active{transform:scale(0.98);}\n.ab.pr{background:var(--cyan);color:#000;border-color:var(--cyan);}\n.ab.dn{border-color:rgba(255,77,77,0.2);color:var(--red);}\n</style>
+</head>
+<body>
+
+<div class="tb">
+  <button class="tbi stst warn" id="btnBle">BLE</button>
+  <button class="tbi stst err" id="btnEcu">ECU</button>
+  <div class="tbi" id="valVolt">--V</div>
+  <div class="tbf"></div>
+  <button class="tbi" id="btnPip" title="Picture in Picture">PIP</button>
+  <button class="tbi" id="btnEdit">⚙</button>
+</div>
+
+<div class="db" id="db"></div>
+
+<div class="em" id="em">
+  <div class="em-c">
+    <div class="em-h">
+      <h3 class="em-t" id="emT">Налаштування</h3>
+      <button class="em-x" id="emX">×</button>
+    </div>
+    <div class="em-b" id="emb"></div>
+  </div>
+</div>
+
+<script>
+// PARAMETERS METADATA
+const P = {
+  RPM:{n:'Обороти',u:'rpm',m:14000,c:'var(--cyan)',w:10000,r:12000},
+  GpsSpd:{n:'Швидкість GPS',u:'km/h',m:180,c:'var(--cyan)'},
+  T_Eng:{n:'Мотор',u:'°C',m:140,c:'var(--amber)',w:105,r:115},
+  Volt:{n:'Вольтаж',u:'V',m:16,c:'var(--yellow)',w:11.5,r:11.0},
+  TPS:{n:'Дросель',u:'%',m:100,c:'var(--green)'},
+  In_V_Spd:{n:'Швидкість Колеса',u:'km/h',m:180,c:'var(--blue)'},
+  Gear:{n:'Передача',u:'',m:6,c:'var(--green)'},
+  CoreT:{n:'Процесор',u:'°C',m:100,c:'var(--muted)'}
+};
+
+// PARAMETER GROUPS
+const PG = [
+  {n:'Основне',k:['RPM','GpsSpd','Gear']},
+  {n:'Двигун',k:['T_Eng','TPS','Volt']},
+  {n:'Інше',k:['In_V_Spd','CoreT']}
+];
+
+// LIVE STATE VALUES
+let V = { RPM:0, GpsSpd:0, T_Eng:0, Volt:0, TPS:0, In_V_Spd:0, Gear:0, CoreT:0 };
+
+// APP STATE
+let lay = [];
+let isEdit = false;
+let ptile = null;
+
+// PICTURE IN PICTURE STATE
+let pipVideo = null;
+let pipCanvas = null;
+let pctx = null;
+let pipInterval = null;
+
+const DF = [
+  {id:'t1',k:'RPM',sz:'s22',st:'gauge'},
+  {id:'t2',k:'GpsSpd',sz:'s21',st:'flat'},
+  {id:'t3',k:'T_Eng',sz:'s1',st:'flat'},
+  {id:'t4',k:'Volt',sz:'s1',st:'flat'},
+  {id:'t5',k:'Gear',sz:'s1',st:'flat'},
+  {id:'t6',k:'TPS',sz:'s1',st:'flat'}
+];
+
+function ss(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+function ls(k,df){try{const r=localStorage.getItem(k);return r?JSON.parse(r):df}catch(e){return df}}
+
+// RENDER DASHBOARD
+function render(){
+  const container = document.getElementById('db');
+  container.innerHTML = '';
+  
+  lay.forEach(t => {
+    const p = P[t.k];
+    if(!p) return;
+    
+    const tile = document.createElement('div');
+    tile.className = `tl ${t.sz}` + (isEdit ? ' edit-mode' : '');
+    
+    const name = document.createElement('div');
+    name.className = 'tn';
+    name.textContent = p.n;
+    tile.appendChild(name);
+    
+    const valW = document.createElement('div');
+    valW.className = 'tv-w';
+    
+    const val = document.createElement('div');
+    val.className = 'tv';
+    val.id = `v_${t.id}`;
+    val.textContent = V[t.k] !== undefined ? V[t.k] : '--';
+    valW.appendChild(val);
+    
+    if(p.u){
+      const unit = document.createElement('div');
+      unit.className = 'tu';
+      unit.textContent = p.u;
+      valW.appendChild(unit);
+    }
+    tile.appendChild(valW);
+    
+    if(t.st === 'gauge'){
+      const gw = document.createElement('div');
+      gw.className = 'g-w';
+      const gb = document.createElement('div');
+      gb.className = 'g-b';
+      gb.id = `g_${t.id}`;
+      gw.appendChild(gb);
+      tile.appendChild(gw);
+    }
+    
+    tile.addEventListener('click', () => {
+      if(isEdit) bedit(t);
+    });
+    
+    container.appendChild(tile);
+  });
+  up();
+}
+
+// UPDATE LIVE VALUES ONLY
+function up(){
+  document.getElementById('valVolt').textContent = (V.Volt ? V.Volt.toFixed(1) : '--') + 'V';
+  
+  lay.forEach(t => {
+    const p = P[t.k];
+    const el = document.getElementById(`v_${t.id}`);
+    if(!el) return;
+    
+    let raw = V[t.k];
+    let display = raw !== undefined ? raw : '--';
+    el.textContent = display;
+    
+    if(p.r && raw >= p.r) el.style.color = 'var(--red)';
+    else if(p.w && raw >= p.w) el.style.color = 'var(--amber)';
+    else el.style.color = '#fff';
+    
+    const gb = document.getElementById(`g_${t.id}`);
+    if(gb){
+      let pct = Math.min(100, Math.max(0, (raw / p.m) * 100)) || 0;
+      gb.style.width = `${pct}%`;
+      if(p.r && raw >= p.r) gb.style.backgroundColor = 'var(--red)';
+      else if(p.w && raw >= p.w) gb.style.backgroundColor = 'var(--amber)';
+      else gb.style.backgroundColor = p.c;
+    }
+  });
+}
+
+// CONFIGURE PICTURE-IN-PICTURE (2 CHANNELS)
+function initPip() {
+  if (pipVideo) return;
+  pipCanvas = document.createElement('canvas');
+  pipCanvas.width = 240;
+  pipCanvas.height = 120;
+  pctx = pipCanvas.getContext('2d', { alpha: false });
+
+  pipVideo = document.createElement('video');
+  pipVideo.muted = true;
+  pipVideo.playsInline = true;
+
+  const stream = pipCanvas.captureStream(2); // 2 Кадри на секунду для збереження енергії
+  pipVideo.srcObject = stream;
+}
+
+function drawPipFrame() {
+  if (!pctx) return;
+  const W = pipCanvas.width, H = pipCanvas.height;
+  
+  pctx.fillStyle = '#0d0d0f'; 
+  pctx.fillRect(0, 0, W, H);
+
+  const temp = String(V.T_Eng ?? '--');
+  const speed = String(V.GpsSpd ?? '--');
+
+  pctx.textBaseline = 'middle';
+  pctx.textAlign = 'center';
+
+  // ЛІВА ПОЛОВИНА: ТЕМПЕРАТУРА
+  pctx.fillStyle = '#ffb74d'; 
+  pctx.font = '700 50px monospace';
+  pctx.fillText(temp, W * 0.25, H * 0.45);
+
+  pctx.fillStyle = '#666'; 
+  pctx.font = '700 11px "Segoe UI", sans-serif';
+  pctx.fillText('ТЕМП °C', W * 0.25, H * 0.82);
+
+  // ПРАВА ПОЛОВИНА: ШВИДКІСТЬ GPS
+  pctx.fillStyle = '#37e0e6'; 
+  pctx.font = '700 50px monospace';
+  pctx.fillText(speed, W * 0.75, H * 0.45);
+
+  pctx.fillStyle = '#666';
+  pctx.font = '700 11px "Segoe UI", sans-serif';
+  pctx.fillText('GPS КМ/ГОД', W * 0.75, H * 0.82);
+}
+
+async function togglePip() {
+  try {
+    initPip();
+    if (document.pictureInPictureElement) {
+      await document.exitPictureInPicture();
+      return;
+    }
+    drawPipFrame();
+    if (pipInterval) clearInterval(pipInterval);
+    pipInterval = setInterval(drawPipFrame, 500);
+
+    pipVideo.play().then(async () => {
+      await pipVideo.requestPictureInPicture();
+    });
+  } catch (e) {
+    console.error("PiP error:", e);
+  }
+}
+
+// SETUP MENU INTERFACE
+function bmain(){
+  document.getElementById('emT').textContent = 'Налаштування';
+  const body = document.getElementById('emb'); body.innerHTML = '';
+  
+  const ab = document.createElement('button');
+  ab.className = 'ab pr'; ab.textContent = '➕ Додати Плитку';
+  ab.addEventListener('click', () => bedit(null));
+  body.appendChild(ab);
+  
+  const cl = document.createElement('button');
+  cl.className = 'ab dn'; cl.textContent = '🔄 Скинути Макет';
+  cl.addEventListener('click', () => { if(confirm('Скинути макет?')){lay=[...DF];ss('lay2',lay);render();cpk();} });
+  body.appendChild(cl);
+}
+
+function bedit(target){
+  ptile = target;
+  document.getElementById('emT').textContent = ptile ? 'Редагувати Плитку' : 'Додати Плитку';
+  const body = document.getElementById('emb'); body.innerHTML = '';
+  
+  const pg = document.createElement('div'); pg.className = 'gt'; pg.textContent = 'Оберіть Показник'; body.appendChild(pg);
+  const pl = document.createElement('div'); pl.className = 'pl';
+  
+  PG.forEach(g => {
+    g.k.forEach(k => {
+      const p = P[k];
+      const item = document.createElement('div');
+      item.className = 'pi' + (ptile?.k === k ? ' sel' : '');
+      item.innerHTML = `<div><span class="pn2">${p.n}</span><span class="pc">${p.u}</span></div><div class="ck">✓</div>`;
+      item.addEventListener('click', () => selp(k));
+      pl.appendChild(item);
+    });
+  });
+  body.appendChild(pl);
+  
+  if(ptile){
+    const stg = document.createElement('div'); stg.className = 'gt'; stg.textContent = 'Стиль'; body.appendChild(stg);
+    const sr = document.createElement('div'); sr.className = 'sr';
+    [['flat','Цифри'],['gauge','Кільце']].forEach(([v,l])=>{\n      const b=document.createElement('div');b.className='sb'+((ptile?.st||'flat')===v?' sel':'');\n      b.textContent=l;b.addEventListener('click',()=>selst(v));sr.appendChild(b);\n    });body.appendChild(sr);
+    const szg = document.createElement('div'); szg.className = 'gt'; szg.textContent = 'Розмір'; body.appendChild(szg);
+    const szr = document.createElement('div'); szr.className = 'szr';
+    [['s1','1×1'],['s21','2×1'],['s22','2×2']].forEach(([v,l])=>{\n      const b=document.createElement('div');b.className='sb'+((ptile?.sz||'s1')===v?' sel':'');\n      b.textContent=l;b.addEventListener('click',()=>selsz(v));szr.appendChild(b);\n    });body.appendChild(szr);
+    
+    const db = document.createElement('button'); db.className = 'ab dn'; db.textContent = '🗑 Видалити';
+    db.addEventListener('click', () => { lay = lay.filter(t => t.id !== ptile.id); ss('lay2', lay); cpk(); render(); bmain(); });
+    body.appendChild(db);
+  }
+}
+
+function selp(k){
+  if(ptile) { ptile.k = k; ss('lay2', lay); render(); bedit(ptile); }
+  else {
+    const id = 't' + Date.now();
+    const nt = { id, k, sz: 's1', st: 'flat' };
+    lay.push(nt); ss('lay2', lay); render(); bedit(nt);
+  }
+}
+function selst(v){ if(ptile){ ptile.st = v; ss('lay2', lay); render(); bedit(ptile); } }
+function selsz(v){ if(ptile){ ptile.sz = v; ss('lay2', lay); render(); bedit(ptile); } }
+function cpk(){ document.getElementById('em').classList.remove('sh'); isEdit = false; document.getElementById('btnEdit').classList.remove('active'); render(); }
+
+// INITIAL EVENTS
+document.getElementById('btnEdit').addEventListener('click', () => {
+  isEdit = !isEdit;
+  document.getElementById('btnEdit').classList.toggle('active', isEdit);
+  render();
+});
+
+document.getElementById('btnPip').addEventListener('click', togglePip);
+
+document.getElementById('btnBle').addEventListener('click', () => {
+  const modal = document.getElementById('em');
+  modal.classList.add('sh');
+  bmain();
+});
+
+document.getElementById('emX').addEventListener('click', cpk);
+
+// SETUP CLEAN EXIT FROM PIP WINDOW
+window.addEventListener('load', () => {
+  lay = ls('lay2', DF);
+  render();
+  
+  // Прив'язка очищення інтервалу при закритті PiP вікна вручну
+  setTimeout(() => {
+    if (pipVideo) {
+      pipVideo.addEventListener('leavepictureinpicture', () => {
+        if (pipInterval) { clearInterval(pipInterval); pipInterval = null; }
+      });
+    }
+  }, 1000);
+});
+</script>
+</body>
+</html>
