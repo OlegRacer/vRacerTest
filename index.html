@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Кутомір для Скутера</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #121212;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            width: 100%;
+            max-width: 400px;
+            padding: 20px;
+        }
+
+        .angle-display {
+            font-size: 5rem;
+            font-weight: bold;
+            margin: 20px 0;
+            transition: color 0.1s ease;
+        }
+
+        .direction {
+            font-size: 1.5rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            height: 30px;
+            color: #888;
+        }
+
+        /* Візуальна шкала */
+        .gauge-container {
+            width: 80%;
+            height: 10px;
+            background-color: #333;
+            border-radius: 5px;
+            margin: 30px auto;
+            position: relative;
+        }
+
+        .gauge-pointer {
+            width: 20px;
+            height: 20px;
+            background-color: #00ff88;
+            border-radius: 50%;
+            position: absolute;
+            top: -5px;
+            left: 50%;
+            transform: translateX(-50%);
+            transition: left 0.1s ease;
+            box-shadow: 0 0 10px #00ff88;
+        }
+
+        .center-line {
+            position: absolute;
+            width: 2px;
+            height: 20px;
+            background-color: #ff3333;
+            left: 50%;
+            top: -5px;
+        }
+
+        /* Кнопка Калібрування */
+        .btn {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 123, 255, 0.4);
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+            background-color: #0056b3;
+        }
+
+        .status {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="direction" id="direction">ЦЕНТР</div>
+    <div class="angle-display" id="angle">0°</div>
+    
+    <div class="gauge-container">
+        <div class="center-line"></div>
+        <div class="gauge-pointer" id="pointer"></div>
+    </div>
+
+    <button class="btn" id="calibBtn">Пошук Нуля (0°)</button>
+    <div class="status" id="status">Встановіть скутер рівно та натисніть кнопку</div>
+</div>
+
+<script>
+    let zeroOffset = 0;
+    let isCalibrated = false;
+
+    const angleDisplay = document.getElementById('angle');
+    const directionDisplay = document.getElementById('direction');
+    const pointer = document.getElementById('pointer');
+    const calibBtn = document.getElementById('calibBtn');
+    const statusDisplay = document.getElementById('status');
+
+    // Функція обробки руху
+    function handleOrientation(event) {
+        // Організація осі в залежності від орієнтації (портретна)
+        // event.gamma відповідає за нахил вліво/вправо (від -90 до 90)
+        let currentRawAngle = event.gamma; 
+
+        if (currentRawAngle === null) return;
+
+        // Розрахунок кута з урахуванням калібрування
+        let calculatedAngle = currentRawAngle - zeroOffset;
+
+        // Нормалізація в межах від -180 до 180 (про всяк випадок)
+        if (calculatedAngle > 180) calculatedAngle -= 360;
+        if (calculatedAngle < -180) calculatedAngle += 360;
+
+        // Округлюємо до 1 знаку після коми
+        let finalAngle = calculatedAngle.toFixed(1);
+        let absAngle = Math.abs(finalAngle);
+
+        // Відображаємо значення кута
+        angleDisplay.innerText = `${absAngle}°`;
+
+        // Визначаємо сторону нахилу
+        if (finalAngle > 0.5) {
+            directionDisplay.innerText = "Нахил Вправо ➔";
+            directionDisplay.style.color = "#00ff88";
+        } else if (finalAngle < -0.5) {
+            directionDisplay.innerText = "➦ Нахил Вліво";
+            directionDisplay.style.color = "#ff3366";
+        } else {
+            directionDisplay.innerText = "ЦЕНТР";
+            directionDisplay.style.color = "#888";
+            angleDisplay.innerText = "0°";
+        }
+
+        // Рух повзунка на шкалі (обмежимо макс. кут для шкали в 45 градусів)
+        let maxGaugeAngle = 45;
+        let percent = 50 + (calculatedAngle / maxGaugeAngle) * 50;
+        percent = Math.max(0, Math.min(100, percent)); // Обмеження від 0% до 100%
+        pointer.style.left = `${percent}%`;
+    }
+
+    // Запит доступу та калібрування
+    calibBtn.addEventListener('click', () => {
+        // Запит для iOS 13+ пристроїв
+        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+            DeviceOrientationEvent.requestPermission()
+                .then(permissionState => {
+                    if (permissionState === 'granted') {
+                        startTracking();
+                    } else {
+                        statusDisplay.innerText = "Доступ до датчиків відхилено.";
+                    }
+                })
+                .catch(console.error);
+        } else {
+            // Для Android та старих iOS
+            startTracking();
+        }
+    });
+
+    function startTracking() {
+        // Фіксуємо поточний кут як новий "нуль"
+        window.addEventListener('deviceorientation', function setZero(event) {
+            if(event.gamma !== null) {
+                zeroOffset = event.gamma;
+                isCalibrated = true;
+                statusDisplay.innerText = "Калібрування успішне! Нуль встановлено.";
+                statusDisplay.style.color = "#00ff88";
+                
+                // Видаляємо цей одноразовий слухач і ставимо постійний
+                window.removeEventListener('deviceorientation', setZero);
+                window.addEventListener('deviceorientation', handleOrientation);
+            }
+        });
+    }
+</script>
+
+</body>
+</html>
