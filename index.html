@@ -310,7 +310,13 @@ html.ar-landscape .tile.s1 .tl,html.ar-landscape .tile.s21 .tl{font-size:9px;}
    портретна). */
 html.ar-landscape .map-nav-hud{ max-width:38%; padding-top:6px; padding-bottom:6px; }
 html.ar-landscape .map-nav-hud-left{ left:6px; top:47px; padding-left:12px; padding-right:12px; gap:8px; }
-html.ar-landscape .map-nav-hud-right{ right:6px; top:48px; padding-left:12px; padding-right:12px; gap:8px; }
+/* 15.08.2026: раніше тут теж діяли зменшені padding/gap і max-width:38%
+   (успадковані з .map-nav-hud вище) — сама коробка візуально стискалась,
+   навіть коли шрифт цифр уже зрівняли з портретним. За проханням —
+   картка швидкості/температури в альбомній орієнтації тепер ідентична
+   портретній за розміром (padding/gap/max-width як у базовому правилі
+   .map-nav-hud-right вище), міняється лише позиція (top/right). */
+html.ar-landscape .map-nav-hud-right{ right:6px; top:48px; padding:10px 16px; gap:14px; max-width:46%; }
 html.ar-landscape .nav-hud-dist{ font-size:16px; min-width:46px; }
 /* 15.08.2026: раніше тут було "font-size:17px" — цифри швидкості/температури
    (.nav-hud-tval) в альбомній орієнтації штучно зменшувались відносно
@@ -346,20 +352,24 @@ html.ar-landscape .nav-hud-arrow-wrap svg{ width:30px; height:28px; }
 .map-nav-poi-btn{bottom:58px; display:none!important;} /* 13.08.2026: стару функцію "заправки" (заправки+магазини) прибрано — все тепер через нову єдину базу й сітку меню "Маршрут" */
 .map-nav-plan-btn{bottom:58px;} /* 13.08.2026: прапорець переїхав на місце заправки (right:56px → базовий right:6px від .map-nav-fab) */
 .map-nav-cammark-btn{bottom:58px; right:106px; display:none!important;} /* 11.08.2026: функцію перенесено в сітку меню "Маршрут" — кнопку саму на карті ховаємо */
-html.ar-landscape .map-nav-sound-btn{bottom:151px;}
-html.ar-landscape .map-nav-center-btn{bottom:95px;}
-html.ar-landscape .map-nav-route-btn{bottom:39px;}
-/* Альбомна орієнтація тісна по вертикалі — стару POI-кнопку ховаємо (display:none
-   вище), прапорець тепер займає її колишню позицію (right:56px). */
-html.ar-landscape .map-nav-poi-btn{bottom:39px; right:56px;}
-html.ar-landscape .map-nav-plan-btn{bottom:39px; right:56px;}
+html.ar-landscape .map-nav-sound-btn{bottom:207px;}
+html.ar-landscape .map-nav-center-btn{bottom:151px;}
+html.ar-landscape .map-nav-route-btn{bottom:95px;}
+/* 15.08.2026: за проханням зсунуто в альбомній орієнтації — прапорець
+   став єдиним у нижньому ряду (займає колишнє місце "Маршрут"), решта
+   три кнопки піднялись на один крок кожна (той самий крок 56px, що й
+   був між ними), звук — ще на крок вище над своєю старою позицією.
+   Тепер це ОДНА колонка (right:6px, як база), а не два стовпчики
+   пліч-о-пліч, як було раніше (прапорець сидів окремо на right:56px). */
+html.ar-landscape .map-nav-poi-btn{bottom:39px; right:56px;} /* прихована (display:none!important вище) — позиція не має значення, лишено як було */
+html.ar-landscape .map-nav-plan-btn{bottom:39px; right:6px;}
 html.ar-landscape .map-nav-cammark-btn{bottom:39px; right:156px;}
-/* 15.08.2026: панель адреси "Редактора" точок — опущена до висоти кнопки
-   "Маршрут" (.map-nav-route-btn: bottom:120px портрет / 39px альбом),
-   яка відкриває саме меню (за проханням; була вище, на рівні 🎯).
-   Ховається за замовчуванням — display:flex вмикається JS-ом лише коли
-   й fullscreen-режим карти активний, І "Редактор" увімкнено (обидві
-   умови разом, див. updatePoiEditorBarVisibility). */
+/* 15.08.2026: панель адреси "Редактора" точок — на висоті кнопки
+   "Маршрут" (.map-nav-route-btn: bottom:120px портрет / ТЕПЕР 95px
+   альбом — рухається РАЗОМ із самою кнопкою "Маршрут" при перестановці
+   вище). Ховається за замовчуванням — display:flex вмикається JS-ом
+   лише коли й fullscreen-режим карти активний, І "Редактор" увімкнено
+   (обидві умови разом, див. updatePoiEditorBarVisibility). */
 .poi-editor-bar{
   display:none; position:fixed; left:8px; right:56px; z-index:5500;
   bottom:120px; background:rgba(0,0,0,0.82); border:1px solid var(--line); border-radius:10px;
@@ -367,7 +377,7 @@ html.ar-landscape .map-nav-cammark-btn{bottom:39px; right:156px;}
 }
 .poi-editor-bar input{flex:1; min-width:0; padding:8px; border-radius:8px; border:1px solid #444; background:#111; color:#fff; font-size:14px;}
 .poi-editor-bar button{flex-shrink:0; padding:8px 10px; border-radius:8px; border:1px solid #555; background:#222; color:#fff; font-weight:700; font-size:13px;}
-html.ar-landscape .poi-editor-bar{bottom:39px;}
+html.ar-landscape .poi-editor-bar{bottom:95px;}
 .poi-popup-name{font-weight:600;margin-bottom:2px;}
 .poi-popup-type{color:var(--muted);font-size:12px;}
 
