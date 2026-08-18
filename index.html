@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Bluefy Fullscreen Keyboard Fix</title>
+  <title>Bluefy Strict Fullscreen</title>
   <style>
     * {
       box-sizing: border-box;
@@ -12,40 +12,35 @@
       -webkit-tap-highlight-color: transparent;
     }
 
-    html {
-      background-color: #121212;
+    /* Блокуємо скролл повністю на рівні корневих елементів */
+    html, body {
+      width: 100%;
       height: 100%;
-      overflow: hidden;
-    }
-
-    body {
+      overflow: hidden !important;
       position: fixed;
       top: 0;
       left: 0;
-      width: 100vw;
-      /* Використовуємо JS для точного розрахунку height */
-      height: 100%;
-      overflow: hidden;
+      right: 0;
+      bottom: 0;
       background-color: #121212;
       color: #ffffff;
       font-family: -apple-system, BlinkMacSystemFont, sans-serif;
     }
 
     #app {
-      width: 100%;
-      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100dvh; /* Використовуємо dynamic viewport */
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-
-      /* За замовчуванням враховуємо Safe Area */
+      
       padding-top: env(safe-area-inset-top, 0px);
+      padding-left: env(safe-area-inset-left, 0px);
+      padding-right: env(safe-area-inset-right, 0px);
       padding-bottom: env(safe-area-inset-bottom, 0px);
-    }
-
-    /* Клас, який вимикає нижній Safe Area, коли відкрита клавіатура */
-    body.keyboard-open #app {
-      padding-bottom: 0px !important;
     }
 
     header {
@@ -90,7 +85,7 @@
 
     <main>
       <p>Статус: <b id="status">Звичайний</b></p>
-      <input type="text" id="input" placeholder="Натисни для клавіатури...">
+      <input type="text" id="input" placeholder="Натисни для клавіатури..." autocomplete="off">
     </main>
 
     <footer>
@@ -101,50 +96,43 @@
   <script>
     const input = document.getElementById('input');
     const status = document.getElementById('status');
-    const initialHeight = window.innerHeight;
+    const app = document.getElementById('app');
 
-    // Фіксуємо body строго за розміром екрана
-    function lockBodyHeight() {
-      document.body.style.height = `${window.innerHeight}px`;
+    // Хак: Блокування автоматичного авто-скролу iOS WKWebView
+    function preventIOSScroll() {
+      window.scrollTo(0, 0);
+      document.body.scrollTop = 0;
     }
 
-    lockBodyHeight();
+    // Слухаємо VisualViewport
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', () => {
+        // Підганяємо висоту контейнера точно під реальний видимий розмір
+        app.style.height = `${window.visualViewport.height}px`;
+        preventIOSScroll();
+      });
 
-    // Обробка відкриття клавіатури у Bluefy
+      window.visualViewport.addEventListener('scroll', preventIOSScroll);
+    }
+
+    // Подія фокусу
     input.addEventListener('focus', () => {
-      document.body.classList.add('keyboard-open');
       status.textContent = "Клавіатура відкрита";
-
-      // Скидаємо скролл WKWebView, який ламає Safe Area
-      setTimeout(() => {
-        window.scrollTo(0, 0);
-        document.body.scrollTop = 0;
-      }, 50);
+      
+      // Серія примусових скидань скролу під час анімації виходу клавіатури
+      let attempts = 0;
+      const interval = setInterval(() => {
+        preventIOSScroll();
+        attempts++;
+        if (attempts > 10) clearInterval(interval);
+      }, 30);
     });
 
     input.addEventListener('blur', () => {
-      document.body.classList.remove('keyboard-open');
       status.textContent = "Звичайний";
-      
-      setTimeout(() => {
-        window.scrollTo(0, 0);
-        document.body.scrollTop = 0;
-        lockBodyHeight();
-      }, 50);
+      app.style.height = '100dvh';
+      preventIOSScroll();
     });
-
-    // Фікс для відстеження зміни розміру вьюпорта Bluefy
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', () => {
-        // Якщо висота вьюпорта зменшилася — клавіатура відкрита
-        if (window.visualViewport.height < initialHeight - 100) {
-          document.body.classList.add('keyboard-open');
-        } else {
-          document.body.classList.remove('keyboard-open');
-        }
-        window.scrollTo(0, 0);
-      });
-    }
   </script>
 </body>
 </html>
