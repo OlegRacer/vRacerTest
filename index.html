@@ -2,55 +2,61 @@
 <html lang="uk">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
-  <title>PWA Fullscreen Keyboard Test</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Bluefy Fullscreen Keyboard Fix</title>
   <style>
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
+      -webkit-tap-highlight-color: transparent;
     }
 
-    html, body {
-      width: 100%;
+    html {
+      background-color: #121212;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      /* Використовуємо JS для точного розрахунку height */
       height: 100%;
       overflow: hidden;
       background-color: #121212;
       color: #ffffff;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      /* Вимикаємо стандартне відскочування скролу в iOS */
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
     }
 
-    .app-container {
+    #app {
+      width: 100%;
+      height: 100%;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      align-items: center;
-      width: 100vw;
-      height: 100dvh; /* Використовуємо dynamic viewport height */
-      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-      background: linear-gradient(135deg, #1e1e2f, #111119);
+
+      /* За замовчуванням враховуємо Safe Area */
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    /* Клас, який вимикає нижній Safe Area, коли відкрита клавіатура */
+    body.keyboard-open #app {
+      padding-bottom: 0px !important;
     }
 
     header {
-      padding: 20px;
+      background: #1e1e1e;
+      padding: 15px;
       text-align: center;
-    }
-
-    .status {
-      font-size: 14px;
-      color: #00ffcc;
-      margin-top: 8px;
+      border-bottom: 2px solid #00e676;
     }
 
     main {
-      width: 90%;
-      max-width: 400px;
+      padding: 20px;
       display: flex;
       flex-direction: column;
       gap: 15px;
@@ -58,75 +64,84 @@
 
     input[type="text"] {
       width: 100%;
-      padding: 16px;
-      font-size: 18px;
-      border-radius: 12px;
-      border: 2px solid #333355;
-      background-color: #252538;
-      color: #ffffff;
+      padding: 14px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: 1px solid #444;
+      background: #222;
+      color: #fff;
       outline: none;
-      transition: border-color 0.2s;
-    }
-
-    input[type="text"]:focus {
-      border-color: #00ffcc;
     }
 
     footer {
-      padding: 20px;
-      font-size: 12px;
-      color: #8888aa;
+      background: #1e1e1e;
+      padding: 15px;
+      text-align: center;
+      border-top: 2px solid #2196f3;
     }
   </style>
 </head>
 <body>
 
-  <div class="app-container" id="app">
+  <div id="app">
     <header>
-      <h2>Тест повноекранного режиму</h2>
-      <div class="status" id="status">Клавіатуру закрито</div>
+      <h3>Bluefy Fullscreen Test</h3>
     </header>
 
     <main>
-      <input type="text" id="testInput" placeholder="Торкніться для тесту клавіатури..." autocomplete="off">
+      <p>Статус: <b id="status">Звичайний</b></p>
+      <input type="text" id="input" placeholder="Натисни для клавіатури...">
     </main>
 
     <footer>
-      <p>Перевірка Safe Area при відкритій клавіатурі</p>
+      <p>Низ екрана (Footer)</p>
     </footer>
   </div>
 
   <script>
-    const input = document.getElementById('testInput');
+    const input = document.getElementById('input');
     const status = document.getElementById('status');
-    const app = document.getElementById('app');
+    const initialHeight = window.innerHeight;
 
-    // Хак 1: Примусове повернення вьюпорту при фокусі
+    // Фіксуємо body строго за розміром екрана
+    function lockBodyHeight() {
+      document.body.style.height = `${window.innerHeight}px`;
+    }
+
+    lockBodyHeight();
+
+    // Обробка відкриття клавіатури у Bluefy
     input.addEventListener('focus', () => {
-      status.textContent = 'Клавіатуру відкрито';
-      
-      // Запобігаємо зсуву сторінки iOS Safari
+      document.body.classList.add('keyboard-open');
+      status.textContent = "Клавіатура відкрита";
+
+      // Скидаємо скролл WKWebView, який ламає Safe Area
       setTimeout(() => {
         window.scrollTo(0, 0);
         document.body.scrollTop = 0;
-      }, 100);
+      }, 50);
     });
 
     input.addEventListener('blur', () => {
-      status.textContent = 'Клавіатуру закрито';
-      window.scrollTo(0, 0);
+      document.body.classList.remove('keyboard-open');
+      status.textContent = "Звичайний";
+      
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+        document.body.scrollTop = 0;
+        lockBodyHeight();
+      }, 50);
     });
 
-    // Хак 2: Динамічне коригування розмірів через VisualViewport API
+    // Фікс для відстеження зміни розміру вьюпорта Bluefy
     if (window.visualViewport) {
       window.visualViewport.addEventListener('resize', () => {
-        // Оновлюємо розмір контейнера точно під видиму область без виходу із fullscreen
-        app.style.height = `${window.visualViewport.height}px`;
-        window.scrollTo(0, 0);
-      });
-
-      window.visualViewport.addEventListener('scroll', () => {
-        // Примусово блокуємо спроби Safari проскролити сторінку вгору/вниз
+        // Якщо висота вьюпорта зменшилася — клавіатура відкрита
+        if (window.visualViewport.height < initialHeight - 100) {
+          document.body.classList.add('keyboard-open');
+        } else {
+          document.body.classList.remove('keyboard-open');
+        }
         window.scrollTo(0, 0);
       });
     }
