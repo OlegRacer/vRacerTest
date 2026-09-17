@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Прототип: розділені шари тайлів (base + labels)</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  html,body{margin:0;padding:0;height:100%;background:#000;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;overflow:hidden;}
+  #map{position:fixed;inset:0; transition:transform 0.15s linear; transform-origin:50% 100%;}
+  /* 16.09.2026: нахил (perspective+rotateX) — той самий "фейковий 3D"
+     трюк, про який говорили: тайли (і база, і підписи — обидва просто
+     плоскі растрові картинки) нахиляються РАЗОМ як одна площина.
+     transform-origin:50% 100% — обертання навколо НИЖНЬОГО краю екрана,
+     тому відчуття "дивлюсь вперед і вниз під кутом", а не "картинка
+     перекинулась з центру". */
+
+  /* Тема "OSM + інверсія" — ТОЧНО той самий фільтр, що в основному
+     застосунку (.map-tile-viewport.map-theme-dark), щоб порівняння було
+     чесним, 1:1 з тим, що ти бачиш зараз у vRacer. */
+  #map.invert-theme .leaflet-tile-pane{
+    filter:invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+  }
+  /* У CartoDB-режимі фільтр НЕ застосовується — dark_nolabels вже темний
+     сам по собі, інверсія лише зіпсує кольори (поверне карту в світлу). */
+
+  .panel{
+    position:fixed; left:10px; top:10px; z-index:1000;
+    background:rgba(10,10,10,0.85); border:1px solid rgba(255,255,255,0.15);
+    border-radius:14px; padding:14px 16px; color:#fff; font-size:13px;
+    width:250px; box-sizing:border-box; backdrop-filter:blur(6px);
+  }
+  .panel h3{margin:0 0 10px; font-size:14px; display:flex; align-items:center; gap:6px;}
+  .row{margin-bottom:12px;}
+  .row:last-child{margin-bottom:0;}
+  .label-line{display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; color:#bbb; font-size:12px;}
+  .seg{display:flex; background:rgba(255,255,255,0.08); border-radius:9px; padding:3px; gap:3px;}
+  .seg button{
+    flex:1; border:none; background:transparent; color:#aaa; padding:7px 4px;
+    border-radius:7px; font-size:12px; cursor:pointer; font-weight:600;
+  }
+  .seg button.active{background:#2979ff; color:#fff;}
+  input[type=range]{width:100%; accent-color:#37e0e6;}
+  .btn{
+    width:100%; padding:9px; border-radius:9px; border:none; cursor:pointer;
+    font-size:13px; font-weight:700; background:rgba(255,255,255,0.1); color:#fff;
+  }
+  .btn.on{background:#e67e22;}
+  .hint{font-size:11px; color:#777; line-height:1.4; margin-top:2px;}
+  .val{color:#37e0e6; font-weight:700;}
+  .route-demo{position:fixed;z-index:1000;}
+</style>
+</head>
+<body>
+
+<div id="map" class="invert-theme"></div>
+
+<div class="panel">
+  <h3>🗺️ Base tiles</h3>
+  <div class="row">
+    <div class="seg">
+      <button id="btnInvert" class="active">OSM + інверсія (зараз)</button>
+      <button id="btnCarto">CartoDB dark split</button>
+    </div>
+    <div class="hint" id="modeHint">Поточний підхід vRacer — світлий OSM, перевернутий CSS-фільтром.</div>
+  </div>
+
+  <div class="row">
+    <div class="label-line"><span>🎢 Нахил (3D-ефект)</span><span class="val" id="tiltVal">0°</span></div>
+    <input type="range" id="tiltSlider" min="0" max="45" value="0">
+    <div class="hint" id="tiltHideRow" style="display:none;">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" id="tiltHideLabels"> Ховати підписи під час нахилу (менше спотворення тексту)
+      </label>
+    </div>
+    <div class="hint">Це той самий "фейковий 3D" — площина тайлів просто нахиляється, текст на ній теж спотворюється (растр є растр). Справжній 3D без спотворення тексту вимагає іншого рушія карти (векторний, WebGL) — тут лише тест відчуття.</div>
+  </div>
+
+  <div class="row" id="labelsRow" style="display:none;">
+    <div class="label-line"><span>Прозорість підписів</span><span class="val" id="opVal">100%</span></div>
+    <input type="range" id="opSlider" min="0" max="100" value="100">
+  </div>
+
+  <div class="row" id="keyRow" style="display:none;">
+    <div class="label-line"><span>CARTO API-ключ</span></div>
+    <div style="display:flex;gap:6px;">
+      <input type="text" id="cartoKeyInput" placeholder="встав ключ з carto.com/basemaps/apikey" style="flex:1;background:#000;color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px;font-size:16px;">
+      <button class="btn" id="cartoKeyBtn" style="width:auto;padding:8px 12px;">OK</button>
+    </div>
+    <div class="hint">CARTO з якогось моменту вимагає безкоштовний ключ для raster-тайлів (без нього — водяний знак/помилка). Зареєструватись: <a href="https://carto.com/basemaps/apikey" target="_blank" style="color:#37e0e6;">carto.com/basemaps/apikey</a></div>
+  </div>
+
+  <div class="row" id="navRow" style="display:none;">
+    <button class="btn" id="navBtn">🧭 Режим навігації (притлумити підписи)</button>
+    <div class="hint">Імітує, як виглядатимуть підписи під час активної навігації — авто-встановлює прозорість ~30%, дороги лишаються яскравими.</div>
+  </div>
+
+  <div class="row">
+    <div class="hint">Наблизь карту (zoom 15–17), щоб побачити різницю в номерах будинків і дрібних підписах — на віддаленому зумі їх однаково майже нема в обох варіантах.</div>
+  </div>
+</div>
+
+<script>
+const TAIWAN_CENTER = [24.9440, 121.2200]; // Тайюань/Чжунлі — той самий регіон, що на скріншотах vRacer
+const map = L.map('map', {zoomControl:true, attributionControl:true}).setView(TAIWAN_CENTER, 16);
+
+// ── Режим 1: те, що є зараз у vRacer (OSM light + CSS invert) ──
+const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  subdomains:'abc', maxZoom:19, attribution:'© OpenStreetMap contributors'
+});
+
+// ── Режим 2: CartoDB, база БЕЗ підписів + підписи окремим шаром ──
+// 16.09.2026: CARTO тепер вимагає безкоштовний ключ (?key=...) для
+// raster-тайлів — без нього водяний знак/помилка, це підтверджено
+// зовнішнім джерелом (форум Grafana, точно той самий симптом). Шари
+// створюються ФУНКЦІЄЮ (не одразу), щоб їх можна було перебудувати з
+// новим ключем, коли користувач його вставить.
+let cartoBase = null, cartoLabels = null;
+function buildCartoLayers(key){
+  const keyParam = key ? ('?key='+encodeURIComponent(key)) : '';
+  cartoBase = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_nolabels/{z}/{x}/{y}{r}.png'+keyParam, {
+    subdomains:'abcd', maxZoom:20, detectRetina:true, attribution:'© OpenStreetMap, © CARTO'
+  });
+  cartoLabels = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_only_labels/{z}/{x}/{y}{r}.png'+keyParam, {
+    subdomains:'abcd', maxZoom:20, detectRetina:true, pane:'labelsPane'
+  });
+  wireCartoDiagnostics();
+}
+map.createPane('labelsPane');
+map.getPane('labelsPane').style.zIndex = 450; // вище за tilePane(200), тому підписи видно поверх бази
+map.getPane('labelsPane').style.pointerEvents = 'none';
+
+// 16.09.2026: діагностика прямо на сторінці — щоб не гадати "білий екран
+// через мережу чи через щось інше", якщо CartoDB знову не завантажиться.
+const diagEl = document.createElement('div');
+diagEl.style.cssText = 'position:fixed;bottom:10px;left:10px;right:10px;z-index:1000;background:rgba(200,50,50,0.9);color:#fff;padding:10px;border-radius:10px;font-size:12px;display:none;';
+document.body.appendChild(diagEl);
+let cartoErrCount=0, cartoOkCount=0;
+function wireCartoDiagnostics(){
+  cartoErrCount=0; cartoOkCount=0; diagEl.style.display='none';
+  [cartoBase, cartoLabels].forEach(function(layer){
+    layer.on('tileerror', function(e){
+      cartoErrCount++;
+      diagEl.style.display='block';
+      diagEl.textContent = '⚠️ Тайли CartoDB не завантажуються (помилок: '+cartoErrCount+'). URL: '+(e.tile&&e.tile.src);
+    });
+    layer.on('tileload', function(){ cartoOkCount++; if(cartoOkCount>0) diagEl.style.display='none'; });
+  });
+}
+// 16.09.2026: НЕ localStorage — у пісочниці артефактів Claude.ai це не
+// підтримується (окреме, відоме обмеження) і могло б додати ще одну
+// незрозумілу помилку поверх усього іншого. Проста змінна в пам'яті —
+// ключ просто не переживе перезавантаження сторінки, для тесту цього досить.
+let _cartoKeyMem = '';
+buildCartoLayers(_cartoKeyMem);
+
+osmLayer.addTo(map); // старт — режим "як зараз"
+
+// ── Невеличка демо-лінія маршруту, щоб оцінити контраст на обох темах ──
+const demoRoute = L.polyline([
+  [24.9430,121.2170],[24.9438,121.2185],[24.9445,121.2205],[24.9455,121.2225]
+], {color:'#2979ff', weight:6, opacity:0.95}).addTo(map);
+
+// ── Перемикання режимів ──
+const mapEl = document.getElementById('map');
+const btnInvert = document.getElementById('btnInvert');
+const btnCarto = document.getElementById('btnCarto');
+const labelsRow = document.getElementById('labelsRow');
+const navRow = document.getElementById('navRow');
+const keyRow = document.getElementById('keyRow');
+const tiltHideRow = document.getElementById('tiltHideRow');
+const modeHint = document.getElementById('modeHint');
+
+function setMode(mode){
+  if(mode==='invert'){
+    map.removeLayer(cartoBase); map.removeLayer(cartoLabels);
+    osmLayer.addTo(map);
+    mapEl.classList.add('invert-theme');
+    btnInvert.classList.add('active'); btnCarto.classList.remove('active');
+    labelsRow.style.display='none'; navRow.style.display='none'; keyRow.style.display='none';
+    tiltHideRow.style.display='none';
+    modeHint.textContent = 'Поточний підхід vRacer — світлий OSM, перевернутий CSS-фільтром.';
+  } else {
+    map.removeLayer(osmLayer);
+    mapEl.classList.remove('invert-theme'); // важливо: інверсія зіпсує вже темні CartoDB-тайли
+    cartoBase.addTo(map); cartoLabels.addTo(map);
+    btnCarto.classList.add('active'); btnInvert.classList.remove('active');
+    labelsRow.style.display='block'; navRow.style.display='block'; keyRow.style.display='block';
+    tiltHideRow.style.display='block';
+    modeHint.textContent = 'CartoDB dark_nolabels (база) + dark_only_labels (окремий шар підписів).';
+  }
+}
+btnInvert.addEventListener('click', ()=>setMode('invert'));
+btnCarto.addEventListener('click', ()=>setMode('carto'));
+
+// ── Ключ CARTO — вводиться руками, тримається в пам'яті цієї сторінки
+// (НЕ localStorage — не підтримується в пісочниці артефактів Claude.ai,
+// НЕ хардкодиться у файл), перебудовує обидва шари наново.
+const cartoKeyInput = document.getElementById('cartoKeyInput');
+cartoKeyInput.value = _cartoKeyMem;
+document.getElementById('cartoKeyBtn').addEventListener('click', ()=>{
+  const key = cartoKeyInput.value.trim();
+  _cartoKeyMem = key;
+  const wasActive = map.hasLayer(cartoBase);
+  if(wasActive){ map.removeLayer(cartoBase); map.removeLayer(cartoLabels); }
+  buildCartoLayers(key);
+  if(wasActive){ cartoBase.addTo(map); cartoLabels.addTo(map); }
+  diagEl.style.display='none';
+});
+
+// ── Слайдер прозорості підписів ──
+const opSlider = document.getElementById('opSlider');
+const opVal = document.getElementById('opVal');
+opSlider.addEventListener('input', ()=>{
+  const v = parseInt(opSlider.value,10);
+  cartoLabels.setOpacity(v/100);
+  opVal.textContent = v+'%';
+});
+
+// ── Нахил (3D) — perspective+rotateX на весь #map, обертання навколо
+// нижнього краю ("дивлюсь вперед і вниз"). Це та сама ідея з обговорення
+// "кут нахилу, як у Google" — тут вона застосовна ОДНАКОВО в обох
+// режимах (OSM+інверсія і CartoDB), бо це просто трансформація DOM-
+// елемента, не залежить від джерела тайлів.
+const tiltSlider = document.getElementById('tiltSlider');
+const tiltVal = document.getElementById('tiltVal');
+const tiltHideLabels = document.getElementById('tiltHideLabels');
+function applyTilt(){
+  const deg = parseInt(tiltSlider.value,10);
+  tiltVal.textContent = deg+'°';
+  // 16.09.2026: ФІКС — фіксований scale(1.25) покривав чорні кути лише
+  // на малих кутах. Що більший нахил — то сильніше перспектива "стискає"
+  // верх площини у трапецію, і то БІЛЬШИЙ масштаб треба, щоб трапеція
+  // все одно повністю покривала прямокутний екран. Масштаб тепер росте
+  // разом із кутом: 0°→1.0, 45°→1.8 (лінійно), підібрано емпірично —
+  // якщо на 45° десь ще лишається чорний клаптик, просто збільш 0.8 нижче.
+  const sc = 1 + (deg/45)*0.8;
+  mapEl.style.transform = deg>0 ? ('perspective(700px) rotateX('+deg+'deg) scale('+sc.toFixed(2)+')') : '';
+  if(map.hasLayer(cartoLabels)){
+    if(tiltHideLabels.checked && deg>0) map.removeLayer(cartoLabels);
+    else if(!map.hasLayer(cartoLabels)) cartoLabels.addTo(map);
+  }
+}
+tiltSlider.addEventListener('input', applyTilt);
+tiltHideLabels.addEventListener('change', applyTilt);
+
+// ── Кнопка "режим навігації" — імітація автоматичного притлумлення ──
+const navBtn = document.getElementById('navBtn');
+let navActive = false;
+navBtn.addEventListener('click', ()=>{
+  navActive = !navActive;
+  navBtn.classList.toggle('on', navActive);
+  const target = navActive ? 30 : 100;
+  opSlider.value = target;
+  cartoLabels.setOpacity(target/100);
+  opVal.textContent = target+'%';
+  navBtn.textContent = navActive ? '🧭 Режим навігації (увімкнено)' : '🧭 Режим навігації (притлумити підписи)';
+});
+</script>
+</body>
+</html>
