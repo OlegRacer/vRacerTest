@@ -10119,7 +10119,13 @@ function scheduleViewportZoomResets(delays){
 document.addEventListener('blur', function(e){
   const t=e.target;
   if(t && (t.tagName==='INPUT' || t.tagName==='TEXTAREA' || t.tagName==='SELECT')){
-    scheduleViewportZoomResets([350, 600, 900, 1300]);
+    // 27.09.2026: додано 1800/2600мс — користувач помітив, що ширина
+    // ІНОДІ встигає "зачепитись" за правильне значення після ранніх
+    // спроб (350-1300мс), а потім щось (пізніший власний reflow WKWebView
+    // під час анімації закриття клавіатури, що на повільніших пристроях
+    // триває довше за 1.3с) скидає її назад у вузьку. Довші контрольні
+    // точки — друга лінія захисту саме проти цього пізнього відкату.
+    scheduleViewportZoomResets([350, 600, 900, 1300, 1800, 2600]);
     // 15.08.2026: поле вводу втратило фокус — клавіатура (найімовірніше)
     // закривається, тож "scroll hack" (ховає хром Bluefy) знову можна
     // безпечно запускати — під час самого друкування ми його свідомо
@@ -10167,6 +10173,45 @@ document.addEventListener('visibilitychange', function(){
 });
 window.addEventListener('focus', triggerViewportZoomResetOnResume);
 window.addEventListener('pageshow', triggerViewportZoomResetOnResume);
+
+// 27.09.2026: ВАРІАНТ 2 — раніше єдиний спосіб "відчепити" застряглу
+// вузьку ширину вручну був сам свайп вліво-вправо (той самий
+// задокументований костиль — горизонтальний скрол лишається доступним
+// саме для цього). Проблема: сам свайп нічого не ЛІКУВАВ по-справжньому,
+// а лише механічно совав уже зазумлену сторінку — тому й треба було
+// смикати туди-сюди кілька разів, поки випадково не "стане на місце".
+// Тепер ловимо сам ПОЧАТОК такого жесту (перший помітний горизонтальний
+// рух пальця) і одразу викликаємо СПРАВЖНІЙ фікс (forceResetViewportZoom)
+// напряму — замість "розтягування" вручну користувач отримує миттєвий
+// snap з першого дотику. passive:true — нічого не перехоплюємо й не
+// відміняємо, лише спостерігаємо; cooldown 2с — щоб не смикати
+// viewport-meta на КОЖЕН горизонтальний скрол легітимних елементів
+// (стрічка "пігулок" у топбарі, карусель результатів пошуку тощо), а
+// не лише коли реально зламано.
+(function(){
+  const SWIPE_MOVE_THRESHOLD_PX = 18;
+  const SWIPE_FIX_COOLDOWN_MS = 2000;
+  let startX=0, startY=0, tracking=false, firedThisGesture=false, lastFireTs=0;
+  document.addEventListener('touchstart', function(e){
+    if(!e.touches || e.touches.length!==1) return; // лише один палець — pinch/pan картою це своя окрема історія
+    const ae=document.activeElement;
+    if(ae && (ae.tagName==='INPUT' || ae.tagName==='TEXTAREA' || ae.tagName==='SELECT')) { tracking=false; return; }
+    startX=e.touches[0].clientX; startY=e.touches[0].clientY;
+    tracking=true; firedThisGesture=false;
+  }, {passive:true});
+  document.addEventListener('touchmove', function(e){
+    if(!tracking || firedThisGesture || !e.touches || e.touches.length!==1) return;
+    const dx=e.touches[0].clientX-startX, dy=e.touches[0].clientY-startY;
+    if(Math.abs(dx) < SWIPE_MOVE_THRESHOLD_PX || Math.abs(dx) <= Math.abs(dy)) return; // саме ГОРИЗОНТАЛЬНИЙ рух, не вертикальний скрол/тап
+    firedThisGesture=true;
+    const now=performance.now();
+    if(now-lastFireTs < SWIPE_FIX_COOLDOWN_MS) return;
+    lastFireTs=now;
+    forceResetViewportZoom();
+  }, {passive:true});
+  document.addEventListener('touchend', function(){ tracking=false; }, {passive:true});
+  document.addEventListener('touchcancel', function(){ tracking=false; }, {passive:true});
+})();
 
 function togglePoiEditor(){
   poiEditorActive=!poiEditorActive;
