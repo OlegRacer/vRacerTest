@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>vRacer — Тест сітки плиток</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet">
+<style>
+/* ======================================================================
+   ТЕСТОВИЙ ІНСТРУМЕНТ СІТКИ ПЛИТОК
+   Автономний файл, у продакшн-index.html НЕ вбудований. Мета — підібрати
+   і виміряти в РЕАЛЬНИХ пікселях (на живому телефоні) розміри для нової
+   номенклатури плиток (4×3 / 4×2 / 3×3 / 2×3 / 2×2 / 2×1 / 1×1 / Міні),
+   де відео-плитка більше не position:fixed особливий випадок, а звичайна
+   плитка з розмірами 2×1 / 4×2 / 4×3.
+
+   ІДЕЯ "КРОКУ" (colStep/rowStep): щоб уміщувати "Міні" (найменшу плитку,
+   менше за 1×1) сітку роблять дрібнішою за видиму кількість логічних
+   колонок — 1 логічна колонка = colStep "сирих" колонок CSS grid.
+   Це той самий прийом, що вже є у проді (12 сирих колонок замість 6 —
+   коментар "Сітку зроблено удвічі дрібнішою"). Тут crStep/rowStep —
+   ЖИВІ поля вводу, щоб порівняти варіанти (×1/×2/×4) наочно на екрані.
+   ======================================================================= */
+:root{
+  --bg:#000000;--panel:#0d0d0f;--line:rgba(255,255,255,0.09);
+  --text:#f2f2f0;--muted:#7a7a7a;
+  --cyan:#37e0e6;--amber:#ffb74d;--red:#ff4d4d;--green:#4ade80;
+  --th:52px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;
+  user-select:none;-webkit-user-select:none;touch-action:manipulation;}
+/* Сторінка скролиться ЦІЛИКОМ (html,body), а не в окремому внутрішньому
+   контейнері з overflow:auto — той самий підхід, що й у проді (там це
+   ще й основа для scrollTo(0,1)-хаку приховування хрому браузера; тут
+   хаку немає, лишень сам принцип "тіло сторінки — єдине джерело скролу"). */
+html,body{margin:0;padding:0;width:100%;
+  overflow-x:hidden;-webkit-overflow-scrolling:touch;
+  background:var(--bg);color:var(--text);
+  font-family:'Rajdhani','Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;}
+/* Поки відкрита будь-яка шторка (➕ або довгий тап) — фон не повинен
+   прокручуватись під нею (той самий сенс, що й body.no-scroll у проді). */
+body.no-scroll{overflow:hidden;touch-action:none;}
+.mono{font-family:'JetBrains Mono',monospace;}
+
+/* ── TOPBAR: та сама логіка, що в проді (.tb) — fixed, горизонтальний
+   скрол з прихованим скролбаром, бо пілюль забагато для однієї ширини
+   екрана. Це і є "верхній бар з логікою скролу". ── */
+.tb{position:fixed;top:0;left:0;right:0;z-index:50;
+  display:flex;align-items:center;gap:6px;
+  padding:max(6px,env(safe-area-inset-top)) 8px 6px;
+  background:#000;border-bottom:1px solid var(--line);
+  height:var(--th);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+.tb::-webkit-scrollbar{display:none;}
+.pill{border:1px solid var(--line);border-radius:7px;padding:6px 10px;
+  font-size:12px;color:var(--muted);background:var(--panel);white-space:nowrap;
+  cursor:pointer;flex-shrink:0;display:flex;align-items:center;gap:5px;}
+.pill.on{color:#9be8ff;border-color:#2b6f7a;}
+.pill input{width:44px;background:#000;border:1px solid var(--line);border-radius:5px;
+  color:var(--text);font-size:12px;padding:3px 4px;text-align:center;font-family:'JetBrains Mono',monospace;}
+.pill span.lbl{color:var(--muted);}
+.pill.readout{color:var(--cyan);border-color:rgba(55,224,230,0.35);background:rgba(55,224,230,0.06);
+  font-family:'JetBrains Mono',monospace;font-size:11.5px;}
+#addBtn{margin-left:auto;flex-shrink:0;width:34px;height:34px;border-radius:50%;
+  background:var(--cyan);color:#000;font-size:19px;font-weight:700;border:none;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;}
+
+/* ── СІТКА ── */
+/* ── СІТКА: звичайний блок у потоці документа — скрол дає сама сторінка
+   (html,body), а не цей контейнер. padding-top лише відступає з-під
+   fixed-топбару. ── */
+#grid{background:#000;min-height:100vh;
+  padding-top:calc(env(safe-area-inset-top) + var(--th) + 6px);
+  padding-bottom:calc(env(safe-area-inset-bottom,10px) + 24px);}
+#gi{display:grid;grid-auto-flow:dense;padding:0 6px;}
+
+.tile{position:relative;border-radius:10px;background:var(--panel);
+  border:1px solid var(--line);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:2px;overflow:hidden;
+  padding:4px;transition:box-shadow .15s;
+  /* КРИТИЧНО для сітки з 1fr-колонками: за замовчуванням grid-елемент має
+     min-width:auto (=max-content вмісту), тому текст-вимір на кшталт
+     "366 × 372 px" не дає колонці стиснутись — уся сітка розпирається
+     ширше за контейнер і з'являється зайвий горизонтальний скрол.
+     min-width:0/min-height:0 дозволяють трекам реально ділити 1fr порівну. */
+  min-width:0;min-height:0;}
+.tile .k,.tile .spec,.tile .meas{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.tile.oversize{border-color:rgba(255,77,77,0.6);box-shadow:inset 0 0 0 1px rgba(255,77,77,0.5);}
+.tile.custom{border-style:dashed;border-color:var(--amber);}
+.tile .k{font-size:15px;font-weight:700;color:var(--text);}
+.tile .spec{font-size:9.5px;color:var(--muted);}
+.tile .meas{font-size:11px;color:var(--cyan);font-family:'JetBrains Mono',monospace;margin-top:2px;}
+.tile .rm{position:absolute;top:3px;right:3px;width:17px;height:17px;border-radius:50%;
+  background:rgba(255,77,77,0.85);color:#fff;font-size:11px;line-height:17px;text-align:center;
+  cursor:pointer;}
+.tile .badge-custom{position:absolute;top:3px;left:3px;font-size:8px;color:var(--amber);
+  border:1px solid rgba(255,183,77,0.5);border-radius:4px;padding:1px 4px;}
+
+/* ── МОДАЛЬНІ ШТОРКИ (bottom sheet) ── */
+.backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:200;display:none;}
+.backdrop.show{display:block;}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:201;background:#0a0a0c;
+  border-top:1px solid var(--line);border-radius:16px 16px 0 0;
+  padding:14px 14px calc(16px + env(safe-area-inset-bottom));
+  transform:translateY(100%);transition:transform .22s ease;
+  max-height:82vh;overflow-y:auto;}
+.sheet.show{transform:translateY(0);}
+.sheet-title{font-size:15px;font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;}
+.sheet-title .sub{font-size:11px;color:var(--muted);font-weight:500;}
+.size-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:6px;}
+.size-btn{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:8px 4px 7px;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;}
+.size-btn.sel{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan);}
+.size-btn .prev{width:44px;height:34px;border:1px solid var(--line);border-radius:4px;
+  position:relative;background:#000;}
+.size-btn .prev i{position:absolute;left:0;top:0;background:var(--cyan);border-radius:2px;}
+.size-btn .lab{font-size:12px;font-weight:700;}
+.size-btn .cells{font-size:8.5px;color:var(--muted);}
+.hr{height:1px;background:var(--line);margin:12px 0;}
+.field-row{display:flex;gap:10px;margin-bottom:10px;}
+.field{flex:1;display:flex;flex-direction:column;gap:4px;}
+.field label{font-size:11px;color:var(--muted);}
+.field input{background:#000;border:1px solid var(--line);border-radius:7px;color:var(--text);
+  padding:8px;font-size:14px;text-align:center;font-family:'JetBrains Mono',monospace;}
+.btn-row{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;}
+.btn{flex:1;min-width:120px;padding:10px;border-radius:9px;border:1px solid var(--line);
+  background:var(--panel);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;text-align:center;}
+.btn.primary{background:var(--cyan);color:#000;border-color:var(--cyan);}
+.btn.danger{background:rgba(255,77,77,0.12);color:#ff8080;border-color:rgba(255,77,77,0.4);}
+.btn.ghost{background:transparent;}
+.measured-line{font-size:13px;color:var(--cyan);font-family:'JetBrains Mono',monospace;
+  background:#000;border:1px solid var(--line);border-radius:8px;padding:9px;margin-bottom:10px;text-align:center;}
+
+/* ── Панель "Таблиця розмірів" ── */
+#calcPanel{position:fixed;left:8px;right:8px;z-index:150;
+  top:calc(env(safe-area-inset-top) + var(--th) + 8px);
+  background:rgba(10,10,12,0.96);border:1px solid var(--line);border-radius:12px;
+  padding:10px 12px;display:none;max-height:60vh;overflow-y:auto;}
+#calcPanel.show{display:block;}
+#calcPanel table{width:100%;border-collapse:collapse;font-size:12px;}
+#calcPanel th{text-align:left;color:var(--muted);font-weight:600;font-size:10.5px;padding:4px 6px;border-bottom:1px solid var(--line);}
+#calcPanel td{padding:5px 6px;border-bottom:1px solid rgba(255,255,255,0.04);font-family:'JetBrains Mono',monospace;}
+#calcPanel td.lab{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:13px;}
+#calcPanel .close-x{float:right;color:var(--muted);cursor:pointer;font-size:16px;}
+</style>
+</head>
+<body>
+
+<div class="tb" id="tb">
+  <button class="pill on" id="orientBtn">📱 Портрет</button>
+  <div class="pill"><span class="lbl">Кол:</span><input id="rawCols" type="number" min="1" max="48" value="8"></div>
+  <div class="pill"><span class="lbl">Крок×:</span><input id="colStep" type="number" min="1" max="8" value="2"></div>
+  <div class="pill"><span class="lbl">РядКрок:</span><input id="rowStep" type="number" min="1" max="4" value="1"></div>
+  <div class="pill"><span class="lbl">Ряд px:</span><input id="rowH" type="number" min="20" max="400" value="150"></div>
+  <div class="pill"><span class="lbl">Gap:</span><input id="gapPx" type="number" min="0" max="30" value="6"></div>
+  <div class="pill readout" id="unitReadout">1 сир.кол ≈ …px</div>
+  <button class="pill" id="tableBtn">📐 Таблиця</button>
+  <button class="pill" id="fillBtn">➕ Всі 8</button>
+  <button class="pill" id="clearBtn">🗑 Очистити</button>
+  <button id="addBtn">➕</button>
+</div>
+
+<div id="calcPanel">
+  <span class="close-x" id="calcClose">✕</span>
+  <div style="font-size:13px;font-weight:700;margin-bottom:6px;">Розрахункові розміри (за поточними параметрами сітки)</div>
+  <table>
+    <thead><tr><th>Розмір</th><th>Сирі span (кол×ряд)</th><th>Виміряно, px</th></tr></thead>
+    <tbody id="calcBody"></tbody>
+  </table>
+</div>
+
+<div id="grid"><div id="gi"></div></div>
+
+<div class="backdrop" id="sizeBackdrop"></div>
+<div class="sheet" id="sizeSheet">
+  <div class="sheet-title">Оберіть розмір <span class="sub" id="sizeSheetSub"></span></div>
+  <div class="size-grid" id="sizeGridMain"></div>
+  <button class="btn ghost" id="sizeCancel" style="width:100%;margin-top:4px;">Скасувати</button>
+</div>
+
+<div class="backdrop" id="tileBackdrop"></div>
+<div class="sheet" id="tileSheet">
+  <div class="sheet-title">Плитка <span class="sub" id="tileSheetId"></span></div>
+  <div class="measured-line" id="tileMeasured">— × — px</div>
+  <div class="size-grid" id="sizeGridTile"></div>
+  <div class="hr"></div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Точний розмір у пікселях (перекриває сітку):</div>
+  <div class="field-row">
+    <div class="field"><label>Ширина, px</label><input id="customW" type="number" min="10" max="2000"></div>
+    <div class="field"><label>Висота, px</label><input id="customH" type="number" min="10" max="2000"></div>
+  </div>
+  <div class="btn-row">
+    <button class="btn primary" id="applyCustom">Застосувати точний px</button>
+    <button class="btn ghost" id="resetCustom">Скинути до сітки</button>
+  </div>
+  <div class="hr"></div>
+  <div class="btn-row">
+    <button class="btn" id="dupTile">⧉ Дублювати</button>
+    <button class="btn danger" id="delTile">✕ Видалити</button>
+  </div>
+  <button class="btn ghost" id="tileCancel" style="width:100%;margin-top:8px;">Закрити</button>
+</div>
+
+<script>
+'use strict';
+/* НЕ використовувати ?./?? — звичка з основного проєкту (WKWebView Bluefy),
+   тут не критично (звичайний Safari/Chrome), але лишаємо стиль для
+   сумісності коду з рештою кодової бази. */
+
+// ---------- Означення 8 розмірів (без "сирого" множника — той рахується нижче) ----------
+var BASE_SIZES = [
+  {key:'4x3', label:'4×3', lw:4, lh:3},
+  {key:'4x2', label:'4×2', lw:4, lh:2},
+  {key:'3x3', label:'3×3', lw:3, lh:3},
+  {key:'2x3', label:'2×3', lw:2, lh:3},
+  {key:'2x2', label:'2×2', lw:2, lh:2},
+  {key:'2x1', label:'2×1', lw:2, lh:1},
+  {key:'1x1', label:'1×1', lw:1, lh:1},
+  {key:'mini',label:'Міні',lw:0, lh:0} // 0 = особливий випадок, рахується окремо (пів кроку)
+];
+
+var els = {};
+['rawCols','colStep','rowStep','rowH','gapPx','unitReadout','orientBtn',
+ 'tableBtn','fillBtn','clearBtn','addBtn','calcPanel','calcClose','calcBody',
+ 'gi','sizeBackdrop','sizeSheet','sizeGridMain','sizeCancel','sizeSheetSub',
+ 'tileBackdrop','tileSheet','tileSheetId','tileMeasured','sizeGridTile',
+ 'customW','customH','applyCustom','resetCustom','dupTile','delTile','tileCancel']
+ .forEach(function(id){ els[id]=document.getElementById(id); });
+
+// ---------- Блокування скролу сторінки, поки відкрита будь-яка шторка
+// (той самий "лічильник джерел", що й у проді — на випадок, якщо колись
+// з'явиться друга незалежна причина ставити no-scroll). ----------
+var _scrollLockSources = new Set();
+function setBodyScrollLock(source, locked){
+  if(locked) _scrollLockSources.add(source); else _scrollLockSources.delete(source);
+  document.body.classList.toggle('no-scroll', _scrollLockSources.size>0);
+}
+
+var tileSeq = 1;
+var activeTileEl = null; // плитка, для якої зараз відкрито меню довгого тапу
+
+// ---------- Живий перерахунок означень розмірів під поточний крок ----------
+function currentSizeDefs(){
+  var colStep = Math.max(1, parseInt(els.colStep.value,10) || 2);
+  var rowStep = Math.max(1, parseInt(els.rowStep.value,10) || 1);
+  var miniCol = Math.max(1, Math.floor(colStep/2));
+  var miniRow = Math.max(1, Math.floor(rowStep/2));
+  return BASE_SIZES.map(function(d){
+    if(d.key==='mini'){
+      return {key:d.key, label:d.label, col:miniCol, row:miniRow};
+    }
+    return {key:d.key, label:d.label, col:d.lw*colStep, row:d.lh*rowStep};
+  });
+}
+
+function maxDef(defs){
+  var mc=1, mr=1;
+  defs.forEach(function(d){ if(d.col>mc)mc=d.col; if(d.row>mr)mr=d.row; });
+  return {mc:mc, mr:mr};
+}
+
+// ---------- Застосування налаштувань сітки (grid-template-columns/gap/auto-rows) ----------
+function applyGridSettings(){
+  var raw = Math.max(1, parseInt(els.rawCols.value,10) || 8);
+  var gap = Math.max(0, parseInt(els.gapPx.value,10) || 0);
+  var rowH = Math.max(10, parseInt(els.rowH.value,10) || 150);
+  els.gi.style.gridTemplateColumns = 'repeat('+raw+',1fr)';
+  els.gi.style.gridAutoRows = rowH+'px';
+  els.gi.style.gap = gap+'px';
+  updateUnitReadout();
+  markOversized();
+  requestAnimationFrame(measureAll);
+}
+
+function updateUnitReadout(){
+  // Живий вимір ширини "сирої" колонки: беремо фактичну ширину контейнера,
+  // віднімаємо всі gap-и, ділимо на к-ть колонок — той самий розрахунок,
+  // що робить сам браузер для grid-template-columns:repeat(N,1fr).
+  var raw = Math.max(1, parseInt(els.rawCols.value,10) || 8);
+  var gap = Math.max(0, parseInt(els.gapPx.value,10) || 0);
+  var contentW = els.gi.clientWidth; // включає padding контейнера як частину content, але padding теж 0 по боках лишень 6px — враховано нижче
+  var padL = parseFloat(getComputedStyle(els.gi).paddingLeft)||0;
+  var padR = parseFloat(getComputedStyle(els.gi).paddingRight)||0;
+  var avail = contentW - padL - padR - gap*(raw-1);
+  var colW = avail/raw;
+  var rowH = Math.max(10, parseInt(els.rowH.value,10) || 150);
+  els.unitReadout.textContent = '1 сир.кол ≈ '+colW.toFixed(1)+'px · ряд='+rowH+'px';
+}
+
+// Якщо найбільший потрібний розмір (зазвичай 4×3) не влазить у задану
+// кількість сирих колонок — підсвічуємо це вже на самих плитках
+// (клас .oversize), щоб було видно нереалістичну комбінацію параметрів.
+function markOversized(){
+  var raw = Math.max(1, parseInt(els.rawCols.value,10) || 8);
+  Array.prototype.forEach.call(els.gi.querySelectorAll('.tile'), function(t){
+    var col = parseInt(t.dataset.col,10)||1;
+    t.classList.toggle('oversize', col>raw);
+  });
+}
+
+// ---------- Прев'ю-квадратик у кнопці вибору розміру ----------
+function buildPreview(container, lw, lh, maxLw, maxLh){
+  container.innerHTML='';
+  var i=document.createElement('i');
+  var wp = Math.max(18, Math.round((lw/maxLw)*100));
+  var hp = Math.max(18, Math.round((lh/maxLh)*100));
+  i.style.width=wp+'%'; i.style.height=hp+'%';
+  i.style.left=((100-wp)/2)+'%'; i.style.top=((100-hp)/2)+'%';
+  container.appendChild(i);
+}
+
+function buildSizeGrid(container, onPick, selectedKey){
+  container.innerHTML='';
+  var defs = currentSizeDefs();
+  var mx = maxDef(defs);
+  defs.forEach(function(d){
+    var b=document.createElement('div');
+    b.className='size-btn'+(d.key===selectedKey?' sel':'');
+    var prev=document.createElement('div'); prev.className='prev';
+    buildPreview(prev, d.col, d.row, mx.mc, mx.mr);
+    var lab=document.createElement('div'); lab.className='lab'; lab.textContent=d.label;
+    var cells=document.createElement('div'); cells.className='cells'; cells.textContent=d.col+'×'+d.row+' кл.';
+    b.appendChild(prev); b.appendChild(lab); b.appendChild(cells);
+    b.addEventListener('click', function(){ onPick(d, b, container); });
+    container.appendChild(b);
+  });
+}
+
+// ---------- Створення / вимір плиток ----------
+function makeTile(key){
+  var defs = currentSizeDefs();
+  var d = defs.filter(function(x){return x.key===key;})[0];
+  if(!d) return null;
+  var el = document.createElement('div');
+  el.className='tile';
+  el.dataset.id = 't'+(tileSeq++);
+  el.dataset.key = key;
+  el.dataset.col = d.col;
+  el.dataset.row = d.row;
+  el.style.gridColumn = 'span '+d.col;
+  el.style.gridRow = 'span '+d.row;
+  el.innerHTML =
+    '<div class="k">'+d.label+'</div>'+
+    '<div class="spec">'+d.col+'×'+d.row+' сир.кл.</div>'+
+    '<div class="meas mono">…</div>'+
+    '<div class="rm">✕</div>';
+  wireTile(el);
+  return el;
+}
+
+function refreshTileSpec(el){
+  var d = currentSizeDefs().filter(function(x){return x.key===el.dataset.key;})[0];
+  if(!d) return;
+  if(!el.classList.contains('custom')){
+    el.dataset.col=d.col; el.dataset.row=d.row;
+    el.style.gridColumn='span '+d.col;
+    el.style.gridRow='span '+d.row;
+    el.querySelector('.spec').textContent = d.col+'×'+d.row+' сир.кл.';
+  }
+}
+
+function measureAll(){
+  Array.prototype.forEach.call(els.gi.querySelectorAll('.tile'), function(t){
+    var r = t.getBoundingClientRect();
+    var m = t.querySelector('.meas');
+    if(m) m.textContent = Math.round(r.width)+' × '+Math.round(r.height)+' px';
+  });
+  markOversized();
+  if(els.calcPanel.classList.contains('show')) renderCalcTable();
+  if(activeTileEl) updateTileSheetMeasured();
+}
+
+// ---------- Довгий тап (500мс, зрив при зсуві >10px — той самий поріг,
+// що й інші довгі тапи в основному застосунку) ----------
+function wireTile(el){
+  var timer=null, sx=0, sy=0, fired=false;
+  function clear(){ if(timer){clearTimeout(timer); timer=null;} }
+  el.addEventListener('pointerdown', function(e){
+    if(e.target.closest('.rm')) return;
+    fired=false; sx=e.clientX; sy=e.clientY;
+    clear();
+    timer=setTimeout(function(){ fired=true; openTileSheet(el); }, 500);
+  });
+  el.addEventListener('pointermove', function(e){
+    if(!timer) return;
+    if(Math.abs(e.clientX-sx)>10 || Math.abs(e.clientY-sy)>10) clear();
+  });
+  el.addEventListener('pointerup', function(){ clear(); });
+  el.addEventListener('pointercancel', function(){ clear(); });
+  el.addEventListener('pointerleave', function(){ clear(); });
+  el.querySelector('.rm').addEventListener('click', function(ev){
+    ev.stopPropagation();
+    el.remove();
+    requestAnimationFrame(measureAll);
+  });
+}
+
+// ---------- Шторка вибору розміру (➕) ----------
+function openSizeSheet(){
+  els.sizeSheetSub.textContent = '(додасться в кінець сітки)';
+  buildSizeGrid(els.sizeGridMain, function(d){
+    var el = makeTile(d.key);
+    if(el){ els.gi.appendChild(el); requestAnimationFrame(measureAll); }
+    closeSizeSheet();
+  }, null);
+  els.sizeBackdrop.classList.add('show');
+  els.sizeSheet.classList.add('show');
+  setBodyScrollLock('sizeSheet', true);
+}
+function closeSizeSheet(){
+  els.sizeBackdrop.classList.remove('show');
+  els.sizeSheet.classList.remove('show');
+  setBodyScrollLock('sizeSheet', false);
+}
+
+// ---------- Шторка плитки (довгий тап) ----------
+function pickTileSizeForActive(d){
+  var el = activeTileEl;
+  if(!el) return;
+  el.classList.remove('custom');
+  var badge = el.querySelector('.badge-custom'); if(badge) badge.remove();
+  el.style.width=''; el.style.height=''; el.style.justifySelf=''; el.style.alignSelf='';
+  el.dataset.key = d.key;
+  el.dataset.col = d.col; el.dataset.row = d.row;
+  el.style.gridColumn='span '+d.col; el.style.gridRow='span '+d.row;
+  el.querySelector('.k').textContent = d.label;
+  el.querySelector('.spec').textContent = d.col+'×'+d.row+' сир.кл.';
+  buildSizeGrid(els.sizeGridTile, pickTileSizeForActive, d.key);
+  els.tileSheetId.textContent = '#'+el.dataset.id+' · '+el.dataset.key;
+  requestAnimationFrame(measureAll);
+}
+function openTileSheet(el){
+  activeTileEl = el;
+  els.tileSheetId.textContent = '#'+el.dataset.id+' · '+el.dataset.key;
+  buildSizeGrid(els.sizeGridTile, pickTileSizeForActive, el.dataset.key);
+  var r = el.getBoundingClientRect();
+  els.customW.value = Math.round(r.width);
+  els.customH.value = Math.round(r.height);
+  updateTileSheetMeasured();
+  els.tileBackdrop.classList.add('show');
+  els.tileSheet.classList.add('show');
+  setBodyScrollLock('tileSheet', true);
+}
+function updateTileSheetMeasured(){
+  if(!activeTileEl) return;
+  var r = activeTileEl.getBoundingClientRect();
+  els.tileMeasured.textContent = Math.round(r.width)+' × '+Math.round(r.height)+' px';
+}
+function closeTileSheet(){
+  els.tileBackdrop.classList.remove('show');
+  els.tileSheet.classList.remove('show');
+  setBodyScrollLock('tileSheet', false);
+  activeTileEl = null;
+}
+
+els.applyCustom.addEventListener('click', function(){
+  if(!activeTileEl) return;
+  var w = Math.max(10, parseInt(els.customW.value,10)||10);
+  var h = Math.max(10, parseInt(els.customH.value,10)||10);
+  activeTileEl.classList.add('custom');
+  activeTileEl.style.gridColumn = 'span 1';
+  activeTileEl.style.gridRow = 'span 1';
+  activeTileEl.style.width = w+'px';
+  activeTileEl.style.height = h+'px';
+  activeTileEl.style.justifySelf = 'start';
+  activeTileEl.style.alignSelf = 'start';
+  if(!activeTileEl.querySelector('.badge-custom')){
+    var b=document.createElement('div'); b.className='badge-custom'; b.textContent='px';
+    activeTileEl.appendChild(b);
+  }
+  requestAnimationFrame(function(){
+    measureAll();
+    updateTileSheetMeasured();
+  });
+});
+els.resetCustom.addEventListener('click', function(){
+  if(!activeTileEl) return;
+  activeTileEl.classList.remove('custom');
+  activeTileEl.style.width=''; activeTileEl.style.height='';
+  activeTileEl.style.justifySelf=''; activeTileEl.style.alignSelf='';
+  var badge = activeTileEl.querySelector('.badge-custom'); if(badge) badge.remove();
+  refreshTileSpec(activeTileEl);
+  requestAnimationFrame(function(){
+    measureAll();
+    updateTileSheetMeasured();
+  });
+});
+els.dupTile.addEventListener('click', function(){
+  if(!activeTileEl) return;
+  var clone = makeTile(activeTileEl.dataset.key);
+  if(activeTileEl.classList.contains('custom')){
+    clone.classList.add('custom');
+    clone.style.gridColumn='span 1'; clone.style.gridRow='span 1';
+    clone.style.width=activeTileEl.style.width;
+    clone.style.height=activeTileEl.style.height;
+    clone.style.justifySelf='start'; clone.style.alignSelf='start';
+    var b=document.createElement('div'); b.className='badge-custom'; b.textContent='px';
+    clone.appendChild(b);
+  }
+  activeTileEl.parentNode.insertBefore(clone, activeTileEl.nextSibling);
+  requestAnimationFrame(measureAll);
+});
+els.delTile.addEventListener('click', function(){
+  if(!activeTileEl) return;
+  activeTileEl.remove();
+  closeTileSheet();
+  requestAnimationFrame(measureAll);
+});
+els.tileCancel.addEventListener('click', closeTileSheet);
+els.tileBackdrop.addEventListener('click', closeTileSheet);
+els.sizeCancel.addEventListener('click', closeSizeSheet);
+els.sizeBackdrop.addEventListener('click', closeSizeSheet);
+
+// ---------- Кнопки топбару ----------
+els.addBtn.addEventListener('click', openSizeSheet);
+els.clearBtn.addEventListener('click', function(){
+  els.gi.innerHTML='';
+});
+els.fillBtn.addEventListener('click', function(){
+  currentSizeDefs().forEach(function(d){
+    var el = makeTile(d.key);
+    if(el) els.gi.appendChild(el);
+  });
+  requestAnimationFrame(measureAll);
+});
+els.tableBtn.addEventListener('click', function(){
+  els.calcPanel.classList.toggle('show');
+  if(els.calcPanel.classList.contains('show')) renderCalcTable();
+});
+els.calcClose.addEventListener('click', function(){ els.calcPanel.classList.remove('show'); });
+
+function renderCalcTable(){
+  var defs = currentSizeDefs();
+  var raw = Math.max(1, parseInt(els.rawCols.value,10) || 8);
+  els.calcBody.innerHTML = defs.map(function(d){
+    var existing = els.gi.querySelector('.tile[data-key="'+d.key+'"]:not(.custom)');
+    var measTxt = '— (додайте, щоб виміряти)';
+    if(existing){
+      var r = existing.getBoundingClientRect();
+      measTxt = Math.round(r.width)+' × '+Math.round(r.height)+' px';
+    }
+    var warn = d.col>raw ? ' ⚠️' : '';
+    return '<tr><td class="lab">'+d.label+warn+'</td><td>'+d.col+'×'+d.row+'</td><td>'+measTxt+'</td></tr>';
+  }).join('');
+}
+
+// Портрет/Альбом — лише зручні пресети для полів (реальний поворот
+// телефону сам змінить ширину екрана — вимір все одно живий).
+var landscape=false;
+els.orientBtn.addEventListener('click', function(){
+  landscape=!landscape;
+  if(landscape){
+    els.orientBtn.textContent='🖥 Альбом'; els.orientBtn.classList.add('on');
+    els.rawCols.value=16; els.rowH.value=120;
+  }else{
+    els.orientBtn.textContent='📱 Портрет'; els.orientBtn.classList.add('on');
+    els.rawCols.value=8; els.rowH.value=150;
+  }
+  applyGridSettings();
+});
+
+// Живий перерахунок при будь-якій зміні параметрів сітки: усі вже
+// присутні НЕ-custom плитки перебудовуються під нові span-и, а custom
+// (точний px) — лишаються як є, бо їх сенс саме в незалежності від сітки.
+['rawCols','colStep','rowStep','rowH','gapPx'].forEach(function(id){
+  els[id].addEventListener('input', function(){
+    applyGridSettings();
+    Array.prototype.forEach.call(els.gi.querySelectorAll('.tile:not(.custom)'), refreshTileSpec);
+    requestAnimationFrame(measureAll);
+  });
+});
+
+window.addEventListener('resize', function(){ updateUnitReadout(); requestAnimationFrame(measureAll); });
+new ResizeObserver(function(){ updateUnitReadout(); measureAll(); }).observe(els.gi);
+
+// ---------- Стартовий стан: одразу застосувати сітку і додати всі 8
+// розмірів, щоб таблицю/вимір було видно без зайвих кліків. ----------
+applyGridSettings();
+els.fillBtn.click();
+</script>
+</body>
+</html>
