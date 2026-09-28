@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>KB width test</title>
+<style id="baseCss">
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;background:#000;color:#eee;font-family:-apple-system,Helvetica,Arial,sans-serif;}
+.fld{position:fixed;z-index:10;width:180px;}
+.fld input{width:100%;padding:8px;border-radius:8px;border:1px solid #444;background:#111;color:#fff;font-size:16px;}
+.fld small{position:absolute;left:4px;top:-11px;font-size:9px;color:#888;}
+#r1{top:14px;} #r2{top:62px;}
+.L{left:8px;} .C{left:calc(50% - 90px);} .R{right:8px;}
+#ui{position:relative;margin-top:112px;padding:6px 8px;}
+.btn{display:inline-block;margin:2px 4px 2px 0;padding:7px 10px;border-radius:8px;border:1px solid #555;background:#222;color:#fff;font-size:13px;font-weight:700;}
+.btn.on{border-color:#37e0e6;color:#37e0e6;}
+pre{margin:6px 0 0;padding:6px;background:#0d0d0f;border:1px solid #333;border-radius:8px;font-size:10px;line-height:1.35;white-space:pre-wrap;word-break:break-all;color:#cfe;}
+#hint{font-size:11px;color:#999;margin-top:4px;}
+</style>
+<style id="flagCss"></style>
+</head>
+<body>
+
+<div class="fld L" id="r1"><small>text · left</small><input type="text" id="t_l" placeholder="text L" autocomplete="off"></div>
+<div class="fld C" id="r1c" style="top:14px"><small>text · center</small><input type="text" id="t_c" placeholder="text C" autocomplete="off"></div>
+<div class="fld R" id="r1r" style="top:14px"><small>text · right</small><input type="text" id="t_r" placeholder="text R" autocomplete="off"></div>
+
+<div class="fld L" id="r2l" style="top:62px"><small>password · left</small><input type="password" id="p_l" placeholder="password L"></div>
+<div class="fld C" id="r2c" style="top:62px"><small>number · center</small><input type="number" id="n_c" placeholder="number C"></div>
+<div class="fld R" id="r2r" style="top:62px"><small>search · right</small><input type="search" id="s_r" placeholder="search R"></div>
+
+<div id="ui">
+  <div id="flags"></div>
+  <div>
+    <span class="btn" id="bClear">Очистити</span>
+    <span class="btn" id="bCopy">Копіювати лог</span>
+    <span class="btn" id="bSnap">Знімок зараз</span>
+  </div>
+  <div id="hint">Ландшафт. Тап у поле → закрити клавіатуру → «Копіювати лог». Між режимами сторінка перезавантажується (лог зберігається). Якщо ширина застрягла — перезавантаж вручну.</div>
+  <pre id="log"></pre>
+</div>
+<div id="probe" style="position:fixed;left:0;top:0;width:100lvw;height:0;visibility:hidden"></div>
+<textarea id="cpy" style="position:fixed;left:-9999px;top:0;opacity:0"></textarea>
+
+<script>
+(function(){
+  // ── Прапорці CSS із застосунку vRacer (вмикаються по одному) ──
+  var FLAGS = {
+    L: 'html,body{width:100lvw !important;}',
+    H: 'html,body{min-height:100.1vh !important;}',
+    X: 'html,body{overflow-x:hidden;-webkit-overflow-scrolling:touch;}',
+    U: '*{user-select:none;-webkit-user-select:none;touch-action:manipulation;}'
+  };
+  var LABELS = {
+    L:'width:100lvw', H:'min-height:100.1vh', X:'overflow-x:hidden', U:'user-select/touch-action'
+  };
+  var rawHash = (location.hash||'').replace('#','');
+  var mOff = rawHash.match(/o(\d+)/);
+  var leftOff = mOff ? parseInt(mOff[1],10) : 8; // відступ лівих полів від краю, px
+  var active = rawHash.replace(/o\d+/,'').split('').filter(function(c){return FLAGS[c];});
+  function buildHash(flagsArr, off){ return flagsArr.join('') + (off!==8 ? 'o'+off : ''); }
+  document.getElementById('flagCss').textContent =
+    active.map(function(c){return FLAGS[c];}).join('\n') +
+    '\n.fld.L{left:'+leftOff+'px !important;}';
+
+  var flagsEl = document.getElementById('flags');
+  Object.keys(FLAGS).forEach(function(c){
+    var b=document.createElement('span');
+    b.className='btn'+(active.indexOf(c)>=0?' on':'');
+    b.textContent=LABELS[c];
+    b.addEventListener('click',function(){
+      var next = active.indexOf(c)>=0 ? active.filter(function(x){return x!==c;}) : active.concat([c]);
+      location.hash = buildHash(next, leftOff);
+      location.reload();
+    });
+    flagsEl.appendChild(b);
+  });
+  // Відступ лівих полів (text L / password L) від лівого краю
+  var offWrap=document.createElement('div');
+  var offLbl=document.createElement('span'); offLbl.textContent='ліві поля від краю: '; offLbl.style.cssText='font-size:12px;color:#999;margin-right:4px';
+  offWrap.appendChild(offLbl);
+  [8,30,47,60,100].forEach(function(v){
+    var b=document.createElement('span');
+    b.className='btn'+(v===leftOff?' on':'');
+    b.textContent=v+'px';
+    b.addEventListener('click',function(){ location.hash = buildHash(active, v); location.reload(); });
+    offWrap.appendChild(b);
+  });
+  flagsEl.appendChild(offWrap);
+
+  // ── Лог (зберігається між перезавантаженнями) ──
+  var logEl=document.getElementById('log');
+  var lines=[];
+  try{ lines=JSON.parse(sessionStorage.getItem('kbwt_log')||'[]'); }catch(e){}
+  function render(){ logEl.textContent=lines.join('\n'); }
+  function push(s){
+    lines.push(s);
+    if(lines.length>300) lines=lines.slice(-300);
+    try{ sessionStorage.setItem('kbwt_log', JSON.stringify(lines)); }catch(e){}
+    render();
+  }
+  var modeName = (active.length? active.join('+') : 'БАЗОВИЙ') + ' Loff='+leftOff;
+  var t0=0;
+  function snap(tag){
+    var vv=window.visualViewport;
+    var ae=document.activeElement;
+    var probe=document.getElementById('probe');
+    var s='['+tag+'] w='+window.innerWidth+' h='+window.innerHeight+
+      ' cw='+document.documentElement.clientWidth+
+      ' lvw='+(probe?probe.offsetWidth:'-')+
+      ' vv='+(vv?(Math.round(vv.width*10)/10)+'@'+(Math.round(vv.scale*1000)/1000)+' off='+Math.round(vv.offsetLeft):'-')+
+      ' sx='+Math.round(window.scrollX)+
+      ' el='+(ae&&ae.id?ae.id:(ae?ae.tagName:'-'))+
+      ' mode='+modeName;
+    push(s);
+  }
+  push('════ режим: '+modeName+' ════');
+  snap('load');
+  setTimeout(function(){ snap('load+500ms'); },500);
+
+  function isField(t){ return t && t.id!=='cpy' && (t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'); }
+  document.addEventListener('focusin',function(e){
+    if(!isField(e.target)) return;
+    t0=performance.now();
+    snap('focusin');
+    [40,90,150,220,300,800].forEach(function(ms){ setTimeout(function(){ snap('focus+'+ms+'ms'); },ms); });
+  },true);
+  document.addEventListener('focusout',function(e){
+    if(!isField(e.target)) return;
+    t0=performance.now();
+    snap('blur');
+    [100,350,700,1300,2600].forEach(function(ms){ setTimeout(function(){ snap('blur+'+ms+'ms'); },ms); });
+  },true);
+  function ev(name){ if(t0 && performance.now()-t0<3000) snap(name+'@'+Math.round(performance.now()-t0)+'ms'); }
+  window.addEventListener('resize',function(){ ev('EV-resize'); });
+  if(window.visualViewport) window.visualViewport.addEventListener('resize',function(){ ev('EV-vvresize'); });
+
+  // ── Кнопки ──
+  document.getElementById('bClear').addEventListener('click',function(){ lines=[]; try{sessionStorage.removeItem('kbwt_log');}catch(e){} push('════ режим: '+modeName+' (лог очищено) ════'); });
+  document.getElementById('bSnap').addEventListener('click',function(){ snap('manual'); });
+  document.getElementById('bCopy').addEventListener('click',function(){
+    var txt=lines.join('\n');
+    function fallback(){
+      var ta=document.getElementById('cpy'); ta.value=txt; ta.focus(); ta.select();
+      try{ document.execCommand('copy'); push('(скопійовано)'); }catch(e){ push('(не вдалось скопіювати — виділи текст вручну)'); }
+      ta.blur();
+    }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(function(){ push('(скопійовано)'); },fallback);
+    } else fallback();
+  });
+})();
+</script>
+</body>
+</html>
