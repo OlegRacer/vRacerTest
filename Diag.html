@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>aRacer BLE Diagnostic — Wheel Speed Hunter</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    background: #0a0a0f;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Mono", Menlo, monospace;
+    padding: 12px;
+    font-size: 13px;
+  }
+  h1 { font-size: 16px; margin: 0 0 4px; color: #fff; }
+  .sub { color: #888; font-size: 11px; margin-bottom: 12px; line-height: 1.4; }
+  button {
+    background: #1f6feb;
+    color: #fff;
+    border: none;
+    padding: 14px 20px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    width: 100%;
+    margin-bottom: 10px;
+  }
+  button:disabled { background: #333; color: #777; }
+  button.secondary { background: #2a2a35; }
+  select {
+    background: #1c1c26; color: #fff; border: 1px solid #333;
+    border-radius: 8px; padding: 8px; font-size: 13px; font-family: inherit;
+  }
+  .status {
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #14141c;
+    border: 1px solid #2a2a35;
+    margin-bottom: 10px;
+  }
+  .status.connected { border-color: #2ea043; }
+  .status.error { border-color: #b32424; color: #ff7b72; }
+  .panel {
+    background: #12121a;
+    border: 1px solid #25252f;
+    border-radius: 10px;
+    padding: 10px;
+    margin-bottom: 10px;
+  }
+  .panel h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #6e9bff;
+    margin: 0 0 8px;
+  }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    border-bottom: 1px solid #1c1c26;
+    gap: 8px;
+  }
+  .row:last-child { border-bottom: none; }
+  .label { color: #999; flex-shrink: 0; }
+  .val { color: #fff; font-weight: 600; text-align: right; }
+  .val.hi { color: #ffd23f; }
+
+  /* Byte table */
+  #byteTable {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(54px, 1fr));
+    gap: 3px;
+    font-size: 10px;
+  }
+  .byteCell {
+    background: #1c1c26;
+    border: 1px solid #2a2a35;
+    border-radius: 5px;
+    padding: 4px 2px;
+    text-align: center;
+  }
+  .byteCell .idx { color: #666; font-size: 9px; }
+  .byteCell .hex { color: #6e9bff; font-size: 9px; }
+  .byteCell .dec { color: #fff; font-weight: 700; font-size: 12px; }
+  .byteCell .rng { color: #888; font-size: 9px; margin-top: 2px; }
+  .byteCell.known { border-color: #2ea043; background: #10201a; }
+  .byteCell.known .idx { color: #4ade80; }
+  .byteCell.candidate { border-color: #ffd23f; background: #221f10; }
+  .byteCell.candidate .idx { color: #ffd23f; }
+
+  .controlsRow { display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap: wrap; }
+  .controlsRow label { color:#999; font-size:11px; }
+
+  #gpsCorr { background:#000; color:#0f0; font-size:11px; line-height:1.6; padding:8px; border-radius:8px; min-height:60px; white-space:pre-wrap; word-break:break-all; }
+  .byteCell { cursor: pointer; }
+  .byteCell.sel { border-color: #6e9bff; box-shadow: 0 0 0 1px #6e9bff inset; background: #10182b; }
+  .corrRow { padding: 4px 2px; border-bottom: 1px solid #1a1a1a; cursor: pointer; }
+  .corrRow:active { background: #142014; }
+  .selCard { background:#161622; border:1px solid #2a2a3a; border-radius:8px; padding:8px; margin-top:8px; }
+  .selHead { display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px; }
+  .selHead b { color:#6e9bff; font-size:13px; }
+  .selHead select { padding:4px 6px; font-size:12px; }
+  .selVals { line-height:1.7; font-size:12px; }
+  .selVals b { color:#ffd23f; font-size:14px; }
+  .selInputs { display:flex; align-items:center; gap:4px; flex-wrap:wrap; margin-top:6px; color:#999; }
+  .selInputs input { width:64px; background:#1c1c26; color:#fff; border:1px solid #333; border-radius:6px; padding:6px; font-size:13px; font-family:inherit; }
+  .selCard button { width:auto; margin:0; padding:6px 10px; font-size:12px; border-radius:8px; }
+  .selCard .xbtn { background:#3a1f1f; padding:4px 10px; }
+  #candHistory, #corrHistory {
+    background: #000; color: #0f0; font-size: 10px; line-height: 1.6;
+    padding: 8px; border-radius: 8px; height: 90px; overflow-y: auto;
+    white-space: pre-wrap; word-break: break-all;
+  }
+  #hexlog {
+    background: #000;
+    color: #0f0;
+    font-size: 10px;
+    line-height: 1.5;
+    padding: 8px;
+    border-radius: 8px;
+    height: 180px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .copybtn { margin-top: 6px; }
+  .legend { font-size: 10px; color: #777; margin-top: 6px; }
+  .legend span { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:4px; vertical-align:middle; }
+
+  /* ── 30.09.2026: горизонтальна орієнтація — більше інфи на екрані: панелі в 3 колонки,
+     кнопки в один ряд, вищі логи. Портрет лишається одноколонковим, як було. ── */
+  @media (orientation: landscape) and (min-width: 640px) {
+    body { padding: 8px 12px; font-size: 12px; }
+    h1 { font-size: 14px; }
+    .sub { margin-bottom: 8px; font-size: 10px; }
+    .btnRow { display: flex; gap: 8px; margin-bottom: 8px; }
+    .btnRow button { flex: 1; width: auto; margin-bottom: 0; padding: 9px 6px; font-size: 13px; }
+    .status { margin-bottom: 8px; padding: 6px 10px; }
+    #layout {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      align-items: start;
+    }
+    #layout .panel { margin-bottom: 0; padding: 8px; }
+    .p-params { grid-column: 1; grid-row: 1; }
+    .p-b20    { grid-column: 2; grid-row: 1; }
+    .p-b19    { grid-column: 3; grid-row: 1; }
+    .p-gps    { grid-column: 1 / span 2; grid-row: 2; }
+    .p-sel    { grid-column: 3; grid-row: 2; }
+    .p-len    { grid-column: 1; grid-row: 3; }
+    .p-hex    { grid-column: 2 / span 2; grid-row: 3; }
+    #hexlog { height: 240px; }
+    #gpsCorr { min-height: 110px; font-size: 11px; }
+    .byteCell { padding: 3px 1px; }
+    #layout button { padding: 10px; font-size: 13px; margin-bottom: 6px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>aRacer BLE Diagnostic — Wheel Speed Hunter</h1>
+<div class="sub">
+  <b style="color:#ffd23f;">ШУКАЄМО: швидкість колеса.</b> Показані ТІЛЬКИ невідомі байти обох потоків (20-байтного і 19-байтного) — усе вже знайдене (RPM/Volt/T_Eng/T_Air/MAP/TPS і Inj_Rate) сховано. Під кожним байтом: діапазон min–max і Δ — скільки разів він змінювався. <span style="color:#ffd23f;">Жовті</span> = байт «живий» (змінювався), сірі = поки стоять на місці.<br>
+  Найшвидший спосіб: тисни «📡 GPS-кореляція», їдь із різною швидкістю (0 → 20 → 40 → 60 км/год) — програма сама покаже байти (та 16-бітні пари), що найкраще збігаються зі швидкістю GPS. <b>Тапни</b> потрібний байт (або рядок кореляції) — він потрапить у «Звірку з GPS», де можна підібрати множник, дільник і зсув (є кнопка «🎯 Авто»).
+</div>
+
+<div class="btnRow">
+<button id="btnConnect">🔌 Підключитись до bLink3</button>
+<button id="btnDisconnect" class="secondary" disabled>Відключити</button>
+<button id="btnClear" class="secondary">Очистити лог і історію</button>
+<button id="btnResetCache" class="secondary">🗑 Скинути кеш</button>
+</div>
+
+<div id="status" class="status">Не підключено</div>
+
+<div id="layout">
+<div class="panel p-params">
+  <h2>Підтверджені параметри</h2>
+  <div class="row"><span class="label">RPM — pkt[2:4] BE</span><span class="val" id="rpm">—</span></div>
+  <div class="row"><span class="label">Volt — pkt[5]/10</span><span class="val" id="volt">—</span></div>
+  <div class="row"><span class="label">T_Eng — pkt[6]-28</span><span class="val" id="t_eng">—</span></div>
+  <div class="row"><span class="label">T_Air — pkt[0]-28</span><span class="val" id="t_air">—</span></div>
+  <div class="row"><span class="label">MAP — pkt[11]</span><span class="val" id="map">—</span></div>
+  <div class="row"><span class="label">TPS raw — pkt[4]</span><span class="val" id="tps">—</span></div>
+</div>
+
+<div class="panel p-b20">
+  <h2>Невідомі байти — 20-байтний потік</h2>
+  <div id="byteTable"></div>
+  <div class="legend">
+    <span style="background:#221f10;border:1px solid #ffd23f;"></span>байт змінювався
+  </div>
+</div>
+
+<div class="panel p-b19">
+  <h2>Невідомі байти — 19-байтний потік</h2>
+  <div id="byteTable19"></div>
+</div>
+
+<div class="panel p-gps">
+  <h2>Кореляція зі швидкістю GPS</h2>
+  <button id="btnGps" class="secondary">📡 GPS-кореляція: увімкнути</button>
+  <div class="row"><span class="label">GPS швидкість</span><span class="val hi" id="gpsSpeed">—</span></div>
+  <div class="row"><span class="label">Зібрано вибірок</span><span class="val" id="gpsN">0</span></div>
+  <div class="sub" style="margin:6px 0 4px;">Топ збігів (Пірсон r; чим ближче |r| до 1, тим краще). Тап по рядку додає його у «Звірку з GPS». Потрібна різна швидкість: стоячи нічого не порахується.</div>
+  <div id="gpsCorr">—</div>
+</div>
+
+<div class="panel p-sel">
+  <h2>Звірка з GPS</h2>
+  <div class="sub" style="margin:0 0 6px;">Тапни байт у таблицях (або рядок у «Кореляції») — він додасться сюди. Переведене = raw × множник ÷ дільник + зсув. Повторний тап по байту прибирає його.</div>
+  <div class="row"><span class="label">GPS швидкість</span><span class="val hi" id="gpsSpeed2">—</span></div>
+  <div id="selList"><div class="sub" id="selEmpty" style="margin:8px 0;">Нічого не вибрано.</div></div>
+</div>
+
+<div class="panel p-len">
+  <h2>Які довжини пакетів реально приходять</h2>
+  <div id="lenCounts" style="font-size:11px;color:#999;">—</div>
+</div>
+
+<div class="panel p-hex">
+  <h2>Сирий HEX лог (останні 200 пакетів)</h2>
+  <div id="hexlog"></div>
+  <button class="copybtn secondary" id="btnCopy">📋 Скопіювати весь лог</button>
+</div>
+</div><!-- /layout -->
+
+<script>
+const SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
+const CHAR_UUID = '0000ffe1-0000-1000-8000-00805f9b34fb';
+const PKT_LEN_20 = 20;
+const PKT_LEN_19 = 19;
+const KNOWN_BYTES_20 = {0:'T_Air',2:'RPM_hi',3:'RPM_lo',4:'TPS',5:'Volt',6:'T_Eng',11:'MAP'};
+const KNOWN_BYTES_19 = {7:'Inj_Rate'}; // підтверджено сесією #4: byte[7] × 0.39 + 0.40
+
+let device, server, service, characteristic;
+let hexLines = [];
+let lenCounts = {};
+let lastPkt20 = null, lastPkt19 = null; // останні відомі пакети кожного потоку
+
+const $ = id => document.getElementById(id);
+const statusEl = $('status');
+
+function log(line) {
+  hexLines.push(line);
+  if (hexLines.length > 200) hexLines.shift();
+  $('hexlog').textContent = hexLines.join('\n');
+  $('hexlog').scrollTop = $('hexlog').scrollHeight;
+}
+
+function setStatus(text, cls) {
+  statusEl.textContent = text;
+  statusEl.className = 'status' + (cls ? ' ' + cls : '');
+}
+
+function toHex(bytes) {
+  return Array.from(bytes).map(b => b.toString(16).padStart(2,'0')).join(' ');
+}
+
+function updateLenCounts() {
+  const entries = Object.entries(lenCounts)
+    .sort((a,b) => b[1]-a[1])
+    .map(([l,c]) => `len=${l} ×${c}`)
+    .join('  ·  ');
+  $('lenCounts').textContent = entries || '—';
+}
+
+const stats = {20: [], 19: []}; // на кожен байт: min / max / last / changes
+function updStats(len, bytes) {
+  const st = stats[len];
+  for (let i = 0; i < bytes.length; i++) {
+    let x = st[i];
+    if (!x) x = st[i] = {min: bytes[i], max: bytes[i], last: bytes[i], changes: 0};
+    if (bytes[i] !== x.last) { x.changes++; x.last = bytes[i]; }
+    if (bytes[i] < x.min) x.min = bytes[i];
+    if (bytes[i] > x.max) x.max = bytes[i];
+  }
+}
+
+const cellCache = {};
+function isSelByte(len, i) { return sel.some(it => it.s === len && it.off === i); }
+function renderByteTable(pkt, tableId, knownBytes, len) {
+  const table = $(tableId);
+  let cache = cellCache[tableId];
+  if (!cache) { // клітинки створюємо ОДИН раз і лише оновлюємо текст — інакше тап губиться, бо елемент підміняється між touchstart і touchend
+    cache = cellCache[tableId] = {};
+    table.innerHTML = '';
+    for (let i = 0; i < pkt.length; i++) {
+      if (knownBytes[i] !== undefined) continue; // підтверджені байти НЕ показуємо — лише невідомі
+      const cell = document.createElement('div');
+      cell.className = 'byteCell';
+      cell.dataset.s = len; cell.dataset.i = i;
+      cell.innerHTML = `<div class="idx">${i}</div><div class="hex"></div><div class="dec"></div><div class="rng"></div><div class="rng"></div>`;
+      table.appendChild(cell);
+      cache[i] = {el: cell, hex: cell.children[1], dec: cell.children[2], rng: cell.children[3], chg: cell.children[4]};
+    }
+  }
+  for (const k in cache) {
+    const i = +k, c = cache[i], x = stats[len][i];
+    c.hex.textContent = '0x' + pkt[i].toString(16).padStart(2, '0');
+    c.dec.textContent = pkt[i];
+    c.rng.textContent = x ? x.min + '–' + x.max : '';
+    c.chg.textContent = 'Δ' + (x ? x.changes : 0);
+    c.el.className = 'byteCell' + (x && x.changes > 0 ? ' candidate' : '') + (isSelByte(len, i) ? ' sel' : '');
+  }
+}
+function refreshSelMarks() {
+  for (const tid in cellCache) for (const k in cellCache[tid]) {
+    const c = cellCache[tid][k].el;
+    c.classList.toggle('sel', isSelByte(+c.dataset.s, +c.dataset.i));
+  }
+}
+
+// ── Звірка з GPS: вибрані тапом параметри, множник / дільник / зсув ──
+let sel = [], selUid = 0, gpsKmh = null, gpsKmhTs = 0;
+function rawOf(it, pkt) {
+  const p = pkt || (it.s === 20 ? lastPkt20 : lastPkt19);
+  if (!p) return null;
+  if (it.mode === '1') return p[it.off];
+  if (it.off + 1 >= p.length) return null;
+  return it.mode === 'be' ? (p[it.off] << 8) | p[it.off + 1] : (p[it.off + 1] << 8) | p[it.off];
+}
+function convOf(it, raw) { return raw * it.mult / it.div + it.bias; }
+function addSel(s, off, mode, mult, div, bias) {
+  const it = {id: ++selUid, s, off, mode: mode || '1', mult: mult ?? 1, div: div ?? 1, bias: bias ?? 0, errs: []};
+  sel.push(it);
+  buildSelUI(); refreshSelMarks();
+  return it;
+}
+function toggleSel(s, off) {
+  const idx = sel.findIndex(it => it.s === s && it.off === off);
+  if (idx >= 0) sel.splice(idx, 1); else addSel(s, off);
+  buildSelUI(); refreshSelMarks();
+}
+function selLabel(it) {
+  return `${it.s}[${it.off}${it.mode === '1' ? '' : '..' + (it.off + 1)}]`;
+}
+function buildSelUI() {
+  const box = $('selList');
+  if (!sel.length) { box.innerHTML = '<div class="sub" id="selEmpty" style="margin:8px 0;">Нічого не вибрано.</div>'; return; }
+  box.innerHTML = sel.map(it => `
+    <div class="selCard" data-id="${it.id}">
+      <div class="selHead">
+        <b>${selLabel(it)}</b>
+        <select data-f="mode">
+          <option value="1"${it.mode === '1' ? ' selected' : ''}>1 байт</option>
+          <option value="be"${it.mode === 'be' ? ' selected' : ''}>2 байти BE</option>
+          <option value="le"${it.mode === 'le' ? ' selected' : ''}>2 байти LE</option>
+        </select>
+        <button class="xbtn" data-act="del">✕</button>
+      </div>
+      <div class="selVals">raw <span id="sr_${it.id}">—</span> → <b id="sc_${it.id}">—</b> км/год<br>
+        GPS <span id="sg_${it.id}">—</span> · Δ <span id="sd_${it.id}">—</span> · сер.|Δ| <span id="se_${it.id}">—</span></div>
+      <div class="selInputs">×<input type="number" step="any" data-f="mult" value="${it.mult}">
+        ÷<input type="number" step="any" data-f="div" value="${it.div}">
+        +<input type="number" step="any" data-f="bias" value="${it.bias}">
+        <button data-act="fit" class="secondary">🎯 Авто</button></div>
+    </div>`).join('');
+  updateSelLive();
+}
+function updateSelLive() {
+  const gpsOk = gpsKmh !== null && Date.now() - gpsKmhTs < 5000;
+  sel.forEach(it => {
+    const raw = rawOf(it);
+    const set = (k, v) => { const e = document.getElementById(k + '_' + it.id); if (e) e.textContent = v; };
+    if (raw === null || raw === undefined) { set('sr', '—'); set('sc', '—'); set('sg', '—'); set('sd', '—'); return; }
+    const conv = convOf(it, raw);
+    set('sr', raw);
+    set('sc', conv.toFixed(2));
+    set('sg', gpsOk ? gpsKmh.toFixed(1) : '—');
+    set('sd', gpsOk ? (conv - gpsKmh).toFixed(2) : '—');
+    set('se', it.errs.length ? (it.errs.reduce((a, b) => a + b, 0) / it.errs.length).toFixed(2) : '—');
+  });
+}
+function fitItem(it) {
+  const xs = [], ys = [];
+  gpsSamples.forEach(sm => {
+    const p = it.s === 20 ? sm.p20 : sm.p19; if (!p) return;
+    const r = rawOf(it, p); if (r === null || r === undefined) return;
+    xs.push(r); ys.push(sm.speed);
+  });
+  const c = pearson(xs, ys);
+  if (!c) { alert('Замало даних для підбору: увімкни GPS-кореляцію і їдь із різною швидкістю (≥15 вибірок).'); return; }
+  it.mult = +c.slope.toFixed(5); it.div = 1; it.bias = +c.icpt.toFixed(2); it.errs = [];
+  buildSelUI();
+}
+$('selList').addEventListener('input', e => {
+  const f = e.target.dataset.f, card = e.target.closest('.selCard');
+  if (!f || f === 'mode' || !card) return;
+  const it = sel.find(x => x.id === +card.dataset.id); if (!it) return;
+  let v = parseFloat(e.target.value);
+  if (isNaN(v)) v = f === 'bias' ? 0 : (f === 'div' || f === 'mult' ? 1 : 0);
+  if (f === 'div' && v === 0) v = 1;
+  it[f] = v; it.errs = [];
+  updateSelLive();
+});
+$('selList').addEventListener('change', e => {
+  if (e.target.dataset.f !== 'mode') return;
+  const card = e.target.closest('.selCard'); const it = sel.find(x => x.id === +card.dataset.id); if (!it) return;
+  it.mode = e.target.value; it.errs = [];
+  buildSelUI(); refreshSelMarks();
+});
+$('selList').addEventListener('click', e => {
+  const act = e.target.dataset.act, card = e.target.closest('.selCard');
+  if (!act || !card) return;
+  const it = sel.find(x => x.id === +card.dataset.id); if (!it) return;
+  if (act === 'del') { sel = sel.filter(x => x !== it); buildSelUI(); refreshSelMarks(); }
+  else if (act === 'fit') fitItem(it);
+});
+['byteTable', 'byteTable19'].forEach(id => $(id).addEventListener('click', e => {
+  const c = e.target.closest('.byteCell'); if (!c) return;
+  toggleSel(+c.dataset.s, +c.dataset.i);
+}));
+
+function handleNotify(event) {
+  const value = event.target.value;
+  const bytes = new Uint8Array(value.buffer);
+  if (bytes.length === 0) return;
+
+  lenCounts[bytes.length] = (lenCounts[bytes.length] || 0) + 1;
+  updateLenCounts();
+
+  const ts = new Date().toLocaleTimeString('uk-UA', {hour12:false}) + '.' + new Date().getMilliseconds().toString().padStart(3,'0');
+  log(`[${ts}] len=${bytes.length}: ${toHex(bytes)}`);
+
+  if (bytes.length === PKT_LEN_20 && bytes[0] !== 0xfc) {
+    // 20-байтний телеметричний пакет (fc-фрейм — службовий, НЕ телеметрія, пропускаємо)
+    lastPkt20 = bytes;
+    updStats(20, bytes);
+    const rpm = (bytes[2] << 8) | bytes[3];
+    const volt = (bytes[5] / 10).toFixed(1);
+    const tEng = bytes[6] - 28;
+    const tAir = bytes[0] - 28;
+    const map = bytes[11];
+    const tpsRaw = bytes[4];
+
+    $('rpm').textContent = rpm + ' rpm';
+    $('volt').textContent = volt + ' V';
+    $('t_eng').textContent = tEng + ' °C';
+    $('t_air').textContent = tAir + ' °C';
+    $('map').textContent = map + ' psi';
+    $('tps').textContent = tpsRaw;
+
+    renderByteTable(bytes, 'byteTable', KNOWN_BYTES_20, 20);
+  } else if (bytes.length === PKT_LEN_19) {
+    // Паралельний 19-байтний пакет — тут знайдено кращий кандидат на Inj_Rate (byte[7])
+    lastPkt19 = bytes;
+    updStats(19, bytes);
+    renderByteTable(bytes, 'byteTable19', KNOWN_BYTES_19, 19);
+  } else {
+    return; // інші довжини (fc-службові, короткі ping-відповіді тощо) — не телеметрія
+  }
+
+  updateSelLive();
+}
+
+async function sendChunked(bytesArray) {
+  const data = new Uint8Array(bytesArray);
+  const CHUNK = 20;
+  for (let i = 0; i < data.length; i += CHUNK) {
+    const chunk = data.slice(i, i + CHUNK);
+    await characteristic.writeValue(chunk);
+    await new Promise(r => setTimeout(r, 3));
+  }
+}
+
+function strToBytes(str) {
+  return Array.from(str).map(c => c.charCodeAt(0));
+}
+
+async function runInitSequence() {
+  log('--- INIT SEQUENCE START ---');
+
+  // 1. ATSECU\r
+  await characteristic.writeValue(new Uint8Array([...strToBytes('ATSECU'), 0x0d]));
+  log('>> ATSECU\\r');
+  await new Promise(r => setTimeout(r, 103));
+
+  // 2. PING x4 (рівно 4 рази)
+  for (let i = 0; i < 4; i++) {
+    await characteristic.writeValue(new Uint8Array([0xfc,0x05,0x12,0x00,0xee]));
+    log('>> PING #' + (i+1));
+    await new Promise(r => setTimeout(r, 13));
+  }
+
+  // 3. ZERO
+  await characteristic.writeValue(new Uint8Array([0x00,0x00,0x00]));
+  log('>> ZERO');
+  await new Promise(r => setTimeout(r, 115));
+
+  // 4. FIRMWARE
+  await characteristic.writeValue(new Uint8Array([0xfc,0x05,0x36,0x00,0xca]));
+  log('>> FIRMWARE');
+  await new Promise(r => setTimeout(r, 75));
+
+  // 5. UNK50 — критична пауза 3.8с
+  await characteristic.writeValue(new Uint8Array([0xfc,0x05,0x50,0x00,0xb0]));
+  log('>> UNK50 (waiting 3.8s...)');
+  await new Promise(r => setTimeout(r, 3800));
+
+  // 6. SUBSCRIBE — 126 байт, чанками по 20, +3мс між чанками (не міняти вручну!)
+  const subscribeHex = `fc 05 10 79 08 00 02 01 00 04 01 00 07 01 00 08
+01 00 09 01 00 0a 01 00 0c 01 00 0d 01 00 0e 01
+00 0f 01 00 10 01 00 14 01 00 16 02 00 18 01 00
+19 01 00 1a 02 00 1c 01 00 1d 01 00 21 01 00 22
+01 00 23 02 00 2c 01 00 2d 02 00 2e 02 00 33 02
+00 37 02 00 3d 01 00 42 02 00 46 02 00 48 01 00
+4d 01 00 4e 01 00 52 01 00 58 02 00 7c 02 00 82
+01 00 87 01 00 89 01 00 8a 01 01 cd 02 10`;
+  const subscribeBytes = subscribeHex.split(/\s+/).map(h => parseInt(h, 16));
+  await sendChunked(subscribeBytes);
+  log('>> SUBSCRIBE (126 bytes, chunked)');
+
+  log('--- INIT SEQUENCE DONE ---');
+}
+
+async function connect() {
+  try {
+    setStatus('Шукаю bLink3...', '');
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: 'bLink' }],
+      optionalServices: [SERVICE_UUID]
+    });
+
+    device.addEventListener('gattserverdisconnected', onDisconnected);
+
+    setStatus('Підключаюсь до ' + device.name + '...', '');
+    server = await device.gatt.connect();
+    service = await server.getPrimaryService(SERVICE_UUID);
+    characteristic = await service.getCharacteristic(CHAR_UUID);
+
+    await characteristic.startNotifications();
+    characteristic.addEventListener('characteristicvaluechanged', handleNotify);
+
+    setStatus('Підключено: ' + device.name, 'connected');
+    $('btnConnect').disabled = true;
+    $('btnDisconnect').disabled = false;
+
+    await runInitSequence();
+
+  } catch (err) {
+    setStatus('Помилка: ' + err.message, 'error');
+    log('ERROR: ' + err.message);
+  }
+}
+
+function onDisconnected() {
+  setStatus('Відключено', '');
+  $('btnConnect').disabled = false;
+  $('btnDisconnect').disabled = true;
+}
+
+async function disconnect() {
+  try {
+    if (characteristic) {
+      await characteristic.writeValue(new Uint8Array([0xfc,0x05,0x13,0x00,0xed]));
+      log('>> STOP');
+    }
+  } catch (e) {}
+  if (device && device.gatt.connected) {
+    device.gatt.disconnect();
+  }
+}
+
+$('btnConnect').addEventListener('click', connect);
+$('btnDisconnect').addEventListener('click', disconnect);
+$('btnClear').addEventListener('click', () => {
+  hexLines = [];
+  lenCounts = {};
+  stats[20] = []; stats[19] = []; gpsSamples = [];
+  $('gpsN').textContent = '0'; $('gpsCorr').textContent = '—';
+  $('hexlog').textContent = '';
+  updateLenCounts();
+});
+$('btnCopy').addEventListener('click', () => {
+  const text = hexLines.join('\n');
+  navigator.clipboard.writeText(text).then(() => {
+    $('btnCopy').textContent = '✅ Скопійовано!';
+    setTimeout(() => { $('btnCopy').textContent = '📋 Скопіювати весь лог'; }, 1500);
+  });
+});
+$('btnResetCache').addEventListener('click', () => {
+  // Той самий принцип, що й кнопка "Скинути" в основному додатку:
+  // чистимо localStorage і форсуємо перезавантаження з новим ?v=,
+  // щоб Bluefy гарантовано підтягнув свіжу версію файлу з GitHub,
+  // а не стару закешовану.
+  try { localStorage.clear(); } catch(e) {}
+  const url = new URL(location.href);
+  url.searchParams.set('v', Date.now());
+  location.href = url.toString();
+});
+
+// ── GPS-кореляція: шукаємо байти (та 16-бітні пари), що повторюють швидкість ──
+let gpsWatch = null, gpsSamples = [], lastRes = [], lastCorrTouch = 0;
+function pearson(xs, ys) {
+  const n = xs.length; if (n < 15) return null;
+  let mx = 0, my = 0;
+  for (let i = 0; i < n; i++) { mx += xs[i]; my += ys[i]; }
+  mx /= n; my /= n;
+  let sxx = 0, syy = 0, sxy = 0;
+  for (let i = 0; i < n; i++) { const dx = xs[i] - mx, dy = ys[i] - my; sxx += dx*dx; syy += dy*dy; sxy += dx*dy; }
+  if (sxx === 0 || syy === 0) return null;
+  const slope = sxy / sxx;
+  return { r: sxy / Math.sqrt(sxx * syy), slope, icpt: my - slope * mx, n };
+}
+function buildFeatures() {
+  const f = [];
+  [[20, KNOWN_BYTES_20, PKT_LEN_20], [19, KNOWN_BYTES_19, PKT_LEN_19]].forEach(([s, known, len]) => {
+    for (let i = 0; i < len; i++) {
+      if (known[i] !== undefined) continue;
+      f.push({label: `${s}[${i}]`, s, off: i, mode: '1', get: p => p[i]});
+      if (i + 1 < len && known[i+1] === undefined) {
+        f.push({label: `${s}[${i}..${i+1}] BE`, s, off: i, mode: 'be', get: p => (p[i] << 8) | p[i+1]});
+        f.push({label: `${s}[${i}..${i+1}] LE`, s, off: i, mode: 'le', get: p => (p[i+1] << 8) | p[i]});
+      }
+    }
+  });
+  return f;
+}
+function computeGpsCorr() {
+  if (Date.now() - lastCorrTouch < 2000) return; // не підміняємо рядки, поки користувач торкається списку
+  const res = [];
+  buildFeatures().forEach(ft => {
+    const xs = [], ys = [];
+    gpsSamples.forEach(sm => { const p = ft.s === 20 ? sm.p20 : sm.p19; if (p) { xs.push(ft.get(p)); ys.push(sm.speed); } });
+    const c = pearson(xs, ys);
+    if (c) res.push({label: ft.label, s: ft.s, off: ft.off, mode: ft.mode, ...c});
+  });
+  res.sort((a, b) => Math.abs(b.r) - Math.abs(a.r));
+  lastRes = res.slice(0, 8);
+  $('gpsCorr').innerHTML = lastRes.length
+    ? lastRes.map((x, n) => `<div class="corrRow" data-n="${n}">${x.label.padEnd(16).replace(/ /g, '&nbsp;')} r=${x.r.toFixed(3)} · км/год ≈ ${x.slope.toFixed(4)}×raw ${x.icpt >= 0 ? '+' : '−'} ${Math.abs(x.icpt).toFixed(2)} (n=${x.n})</div>`).join('')
+    : 'Замало даних: потрібно ≥15 вибірок і різна швидкість (їдь).';
+}
+function toggleGps() {
+  if (gpsWatch !== null) {
+    navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null;
+    $('btnGps').textContent = '📡 GPS-кореляція: увімкнути';
+    return;
+  }
+  if (!navigator.geolocation) { $('gpsCorr').textContent = 'Геолокація недоступна в цьому браузері.'; return; }
+  $('btnGps').textContent = '⏹ GPS-кореляція: вимкнути';
+  gpsWatch = navigator.geolocation.watchPosition(pos => {
+    const sp = pos.coords.speed;
+    if (sp === null || sp === undefined || isNaN(sp)) { $('gpsSpeed').textContent = 'немає швидкості'; $('gpsSpeed2').textContent = 'немає швидкості'; return; }
+    const kmh = sp * 3.6;
+    $('gpsSpeed').textContent = kmh.toFixed(1) + ' км/год';
+    $('gpsSpeed2').textContent = kmh.toFixed(1) + ' км/год';
+    gpsKmh = kmh; gpsKmhTs = Date.now();
+    sel.forEach(it => { const r = rawOf(it); if (r !== null && r !== undefined) { it.errs.push(Math.abs(convOf(it, r) - kmh)); if (it.errs.length > 30) it.errs.shift(); } });
+    updateSelLive();
+    if (!lastPkt20 && !lastPkt19) return;
+    gpsSamples.push({speed: kmh, p20: lastPkt20 ? Uint8Array.from(lastPkt20) : null, p19: lastPkt19 ? Uint8Array.from(lastPkt19) : null});
+    if (gpsSamples.length > 600) gpsSamples.shift();
+    $('gpsN').textContent = gpsSamples.length;
+    computeGpsCorr();
+  }, err => { $('gpsCorr').textContent = 'GPS помилка: ' + err.message; },
+  {enableHighAccuracy: true, maximumAge: 0, timeout: 10000});
+}
+$('btnGps').addEventListener('click', toggleGps);
+$('gpsCorr').addEventListener('pointerdown', () => { lastCorrTouch = Date.now(); });
+$('gpsCorr').addEventListener('click', e => {
+  const row = e.target.closest('.corrRow'); if (!row) return;
+  const x = lastRes[+row.dataset.n]; if (!x) return;
+  const ex = sel.find(it => it.s === x.s && it.off === x.off && it.mode === x.mode);
+  if (ex) { sel = sel.filter(it => it !== ex); buildSelUI(); refreshSelMarks(); return; }
+  addSel(x.s, x.off, x.mode, +x.slope.toFixed(5), 1, +x.icpt.toFixed(2)); // множник і зсув одразу з регресії — далі можна підкрутити руками
+});
+
+if (!navigator.bluetooth) {
+  setStatus('Web Bluetooth недоступний у цьому браузері (потрібен Chrome/Bluefy)', 'error');
+  $('btnConnect').disabled = true;
+}
+</script>
+
+</body>
+</html>
