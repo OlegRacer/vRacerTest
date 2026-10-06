@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>CWA тест</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0b0b0d;color:#e8e8ea;font:15px -apple-system,Helvetica,Arial,sans-serif;padding:12px;padding-bottom:40px}
+h1{font-size:18px;margin:0 0 4px}
+.sub{color:#8a8a90;font-size:13px;margin-bottom:12px}
+input{width:100%;padding:12px;border-radius:10px;border:1px solid #333;background:#16161a;color:#fff;font-size:15px;margin-bottom:8px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+button{flex:1 1 140px;padding:12px;border-radius:10px;border:1px solid #2a2a30;background:#1d1d23;color:#fff;font-size:15px}
+button:active{background:#2c2c35}
+button.pr{background:#0e5a8a;border-color:#1b7ab3}
+button.ok{background:#1b5e20;border-color:#2e7d32}
+#out{white-space:pre-wrap;word-break:break-word;background:#111115;border:1px solid #222;border-radius:10px;padding:10px;font:12px ui-monospace,Menlo,monospace;min-height:120px;margin-top:6px}
+.ok{color:#3ddc84}.er{color:#ff6b6b}.wr{color:#ffd54f}
+#img{margin-top:8px;max-width:100%;border-radius:8px;display:none;background:#222}
+#imgs img{display:block;max-width:100%;margin:8px 0 2px;border-radius:8px;background:repeating-conic-gradient(#2a2a2a 0 25%,#1a1a1a 0 50%) 0 0/16px 16px}
+#imgs .cap{font-size:12px;color:#8a8a90}
+</style>
+</head>
+<body>
+<h1>CWA Open Data — тест <span style="font-size:11px;color:#8a8a90">(v06.10 23:28)</span></h1>
+<div class="sub">Окрема програма для перевірки ключа, CORS і форми відповіді. Основний застосунок не чіпає.</div>
+
+<input id="key" type="password" placeholder="Ключ CWA (CWA-XXXXXXXX-…)" autocomplete="off">
+<div class="row">
+  <button class="pr" onclick="runAll()">▶ Перевірити все</button>
+  <button onclick="testRadar()">Радар</button>
+  <button onclick="testRain()">Дощоміри</button>
+</div>
+<input id="cust" placeholder="Свій ID набору (напр. O-A0058-001)" autocomplete="off" autocapitalize="off">
+<div class="row">
+  <button onclick="testCustom(true)">Свій ID · fileapi</button>
+  <button onclick="testCustom(false)">Свій ID · datastore</button>
+  <button onclick="testGrid()">Сітка QPESUMS</button>
+  <button onclick="testCors()">CORS пікселів</button>
+  <button class="pr" onclick="testTransparent()">Прозорий PNG (005/006)</button>
+  <button class="pr" onclick="testPngVsGrid()">PNG проти сітки (палітра)</button>
+  <button class="pr" onclick="testWind()">Вітер (станції CWA)</button>
+  <button class="ok" onclick="copyReport()">📋 Копіювати звіт</button>
+  <button onclick="clearOut()">Очистити</button>
+</div>
+<div id="out">Вставте ключ і натисніть «Перевірити все» або «Прозорий PNG (005/006)».</div>
+<img id="img" alt="">
+<div id="imgs"></div>
+
+<script>
+var BASE='https://opendata.cwa.gov.tw/api/v1/rest/datastore/';
+var FILEBASE='https://opendata.cwa.gov.tw/fileapi/v1/opendataapi/'; // «файловий» API: радар лежить тут, а не в datastore
+var RADAR_IDS=['O-A0058-001','O-A0058-003']; // радарна картинка; пробуємо fileapi, потім datastore
+var GRID_ID='O-A0059-001';                    // сітка QPESUMS (важка), лише кнопкою
+var RAIN_ID='O-A0002-001';                      // дощомірні станції, раз на 10 хв
+var out=document.getElementById('out');
+var report='';
+window.addEventListener('error',function(e){ try{ lg('❌ Помилка скрипта: '+e.message,'er'); }catch(x){} });
+window.addEventListener('unhandledrejection',function(e){ try{ lg('❌ Необроблена помилка: '+(e.reason&&e.reason.message?e.reason.message:e.reason),'er'); }catch(x){} });
+
+function lg(txt,cls){
+  report+=txt+'\n';
+  var s=document.createElement('span');
+  if(cls) s.className=cls;
+  s.textContent=txt+'\n';
+  if(out.getAttribute('data-first')!=='0'){ out.textContent=''; out.setAttribute('data-first','0'); }
+  out.appendChild(s);
+}
+function clearOut(){ document.getElementById('imgs').textContent=''; out.textContent=''; out.setAttribute('data-first','0'); report=''; document.getElementById('img').style.display='none'; }
+function getKey(){
+  var k=document.getElementById('key').value.trim();
+  if(k){ try{ localStorage.setItem('cwaKey',k); }catch(e){} }
+  return k;
+}
+(function(){ try{ var k=localStorage.getItem('cwaKey'); if(k) document.getElementById('key').value=k; }catch(e){} })();
+
+function keys(o){ try{ return Object.keys(o).join(', '); }catch(e){ return ''; } }
+
+// Рекурсивно шукаємо в JSON цікаві поля: посилання на картинку, межі координат, розміри, час
+function scan(node, path, found, depth){
+  if(depth>8 || node===null || node===undefined) return;
+  if(typeof node==='string'){
+    if(/^https?:\/\//i.test(node) && /\.(png|jpg|jpeg|gif)|ProductURL|image/i.test(node+path)) found.urls.push([path,node]);
+    return;
+  }
+  if(typeof node!=='object') return;
+  if(Array.isArray(node)){
+    if(node.length>0 && node.length<=12){ for(var q=0;q<node.length;q++) scan(node[q], path+'['+q+']', found, depth+1); }
+    else if(node.length>0) scan(node[0], path+'[0]', found, depth+1);
+    return;
+  }
+  Object.keys(node).forEach(function(k){
+    var v=node[k], p=path+'.'+k;
+    if(/Range|Dimension|DateTime|Resolution|StartPoint|ProductURL|URL|mimeType|resourceDesc|parameterName|parameterValue/i.test(k) && (typeof v!=='object' || v===null)){
+      found.fields.push([p,String(v).slice(0,160)]);
+    }
+    if(/Range|Dimension|parameter/i.test(k) && v && typeof v==='object'){
+      found.fields.push([p,JSON.stringify(v).slice(0,260)]);
+    }
+    scan(v,p,found,depth+1);
+  });
+}
+
+async function call(id, extra, isFile){
+  var key=getKey();
+  if(!key){ lg('❌ Немає ключа','er'); return null; }
+  var url=(isFile ? FILEBASE : BASE)+encodeURIComponent(id)+'?Authorization='+encodeURIComponent(key)+(isFile ? '&downloadType=WEB' : '')+'&format=JSON'+(extra||'');
+  var t0=Date.now();
+  var resp;
+  try{
+    resp=await fetch(url);
+  }catch(e){
+    lg('❌ '+id+(isFile?' [fileapi]':' [datastore]')+': запит не вдався ('+(e&&e.message?e.message:e)+') за '+(Date.now()-t0)+' мс','er');
+    lg('   Це може бути і неіснуючий шлях/ID (404 без CORS-заголовків теж дає «Load failed»), і справжній CORS. Дощоміри з цього ж хоста працюють — перевіряємо інший шлях.','wr');
+    return null;
+  }
+  // 06.10.2026: показуємо, чи стискає сервер відповідь (для сітки O-A0059-001 це важливо: 8.7 МБ — розпаковані чи ні)
+  var enc=''; try{ enc=resp.headers.get('content-encoding')||''; }catch(e){}
+  var txt=await resp.text();
+  lg((resp.ok?'✅ ':'⚠️ ')+id+(isFile?' [fileapi]':' [datastore]')+': HTTP '+resp.status+', '+Math.round(txt.length/1024)+' КБ (розпаковано), '+(Date.now()-t0)+' мс'+(enc?', стиснення: '+enc:', стиснення: не видно (або заголовок прихований CORS)'), resp.ok?'ok':'wr');
+  var data=null;
+  try{ data=JSON.parse(txt); }catch(e){
+    lg('   Відповідь не JSON: '+txt.slice(0,200),'er');
+    return null;
+  }
+  return data;
+}
+
+function loadImg(url, label){
+  return new Promise(function(res){
+    var t0=Date.now(), im=new Image();
+    im.onload=function(){
+      lg('   🖼 '+label+': '+im.naturalWidth+'×'+im.naturalHeight+', завантажено за '+(Date.now()-t0)+' мс, у пам\'яті ≈ '+Math.round(im.naturalWidth*im.naturalHeight*4/1048576)+' МБ після декодування','ok');
+      res(im);
+    };
+    im.onerror=function(){ lg('   🖼 '+label+': НЕ завантажилась','er'); res(null); };
+    im.src=url+(url.indexOf('?')>=0?'&':'?')+'_='+Date.now();
+  });
+}
+async function testRadar(){
+  lg('— РАДАР (fileapi) —','wr');
+  var shown=false;
+  for(var i=0;i<RADAR_IDS.length;i++){
+    var d=await call(RADAR_IDS[i], '', true);
+    if(!d) continue;
+    var f={urls:[],fields:[]};
+    scan(d,'',f,0);
+    f.fields.forEach(function(x){
+      if(/LongitudeRange|LatitudeRange|ImageDimension|resourceDesc|DateTime|mimeType/.test(x[0])) lg('   '+x[0].split('.').pop()+' = '+x[1]);
+    });
+    if(f.urls.length){
+      lg('   URL: '+f.urls[0][1]);
+      var im=await loadImg(f.urls[0][1], RADAR_IDS[i]);
+      if(im && !shown){ var el=document.getElementById('img'); el.src=im.src; el.style.display='block'; shown=true; }
+    } else lg('   посилання на картинку немає: '+JSON.stringify(d).slice(0,300),'wr');
+  }
+}
+
+function longestString(node, depth, best){
+  if(depth>9 || node===null || node===undefined) return best;
+  if(typeof node==='string'){ if(node.length>best.len) { best.len=node.length; best.val=node; } return best; }
+  if(typeof node!=='object') return best;
+  Object.keys(node).forEach(function(k){ longestString(node[k], depth+1, best); });
+  return best;
+}
+// Чи можна читати пікселі PNG (потрібні CORS-заголовки від S3)? Якщо так — можна лишити тільки кольори дощу фільтром.
+async function testCors(){
+  lg('— CORS ПІКСЕЛІВ КАРТИНКИ —','wr');
+  var d=await call('O-A0058-003','',true);
+  if(!d) return;
+  var url=d.cwaopendata.dataset.resource.ProductURL;
+  await new Promise(function(res){
+    var im=new Image(); im.crossOrigin='anonymous';
+    im.onload=function(){
+      try{
+        var c=document.createElement('canvas'); c.width=64; c.height=64;
+        var x=c.getContext('2d'); x.drawImage(im,0,0,64,64);
+        x.getImageData(0,0,1,1);
+        lg('   ✅ Пікселі ЧИТАЮТЬСЯ (CORS дозволено) — можна фільтрувати кольори дощу','ok');
+      }catch(e){ lg('   ❌ Картинка завантажилась, але пікселі заблоковано: '+e.message,'er'); }
+      res();
+    };
+    im.onerror=function(){ lg('   ❌ З crossOrigin=anonymous картинка не завантажилась — S3 не віддає CORS. Фільтр кольору неможливий, лишається числова сітка.','er'); res(); };
+    im.src=url+'?_='+Date.now();
+  });
+}
+
+// ── 06.10.2026: ПРОЗОРІ PNG-ШАРИ РАДАРА CWA (O-A0058-006 прилегла область, O-A0058-005 велика область) ──
+// Відповідає на питання: який РЕАЛЬНИЙ розмір файлу, розмір картинки в пікселях (→ пам'ять після декодування),
+// чи справді прозорий фон (без підложки/підписів) і чи палітра чиста (мало різних кольорів → інтенсивність відновлюється за кольором).
+var TR_IDS=['O-A0058-006','O-A0058-005'];
+async function testTransparent(){
+  lg('— ПРОЗОРІ PNG-ШАРИ РАДАРА —','wr');
+  var box=document.getElementById('imgs'); box.textContent='';
+  for(var n=0;n<TR_IDS.length;n++){
+    var id=TR_IDS[n];
+    lg('\n▸ '+id,'wr');
+    var d=await call(id,'',true);
+    if(!d) continue;
+    var f={urls:[],fields:[]}; scan(d,'',f,0);
+    f.fields.forEach(function(x){ if(/LongitudeRange|LatitudeRange|ImageDimension|resourceDesc|DateTime|mimeType|Resolution/.test(x[0])) lg('   '+x[0].split('.').pop()+' = '+x[1]); });
+    var url=null;
+    try{ url=d.cwaopendata.dataset.resource.ProductURL; }catch(e){}
+    if(!url && f.urls.length) url=f.urls[0][1];
+    if(!url){ lg('   посилання на картинку немає: '+JSON.stringify(d).slice(0,300),'er'); continue; }
+    lg('   URL: '+url);
+    // 1) качаємо файл як є — справжній розмір у мережі
+    var blob=null, t0=Date.now();
+    try{
+      var r=await fetch(url+(url.indexOf('?')>=0?'&':'?')+'_='+Date.now());
+      lg('   HTTP '+r.status+', content-type: '+(r.headers.get('content-type')||'?')+', content-length: '+(r.headers.get('content-length')||'?')+', content-encoding: '+(r.headers.get('content-encoding')||'—'));
+      blob=await r.blob();
+      lg('   ⬇ файл: '+(blob.size/1024).toFixed(0)+' КБ ('+(blob.size/1048576).toFixed(2)+' МБ), завантажено за '+(Date.now()-t0)+' мс', blob.size<1500*1024?'ok':'wr');
+    }catch(e){
+      lg('   ❌ fetch картинки не вдався ('+(e&&e.message?e.message:e)+') — ймовірно, без CORS; розмір не дізнатись, пробую через <img>','er');
+    }
+    // 2) декодуємо
+    var im=await new Promise(function(res){
+      var i=new Image(); if(!blob) i.crossOrigin='anonymous';
+      i.onload=function(){ res(i); }; i.onerror=function(){ res(null); };
+      i.src=blob ? URL.createObjectURL(blob) : url+'?_='+Date.now();
+    });
+    if(!im){ lg('   ❌ картинка не декодується','er'); continue; }
+    var W=im.naturalWidth, H=im.naturalHeight;
+    lg('   🖼 '+W+'×'+H+', у пам\'яті після декодування ≈ '+Math.round(W*H*4/1048576)+' МБ', (W*H*4/1048576)>30?'wr':'ok');
+    var cap=document.createElement('div'); cap.className='cap'; cap.textContent=id+' · '+W+'×'+H;
+    var show=document.createElement('img'); show.src=im.src;
+    box.appendChild(cap); box.appendChild(show);
+    // 3) аналіз пікселів (зменшення БЕЗ згладжування, щоб не змішувати кольори)
+    try{
+      var cw=Math.min(1200,W), ch=Math.max(1,Math.round(H*cw/W));
+      var c=document.createElement('canvas'); c.width=cw; c.height=ch;
+      var x=c.getContext('2d',{willReadFrequently:true}); x.imageSmoothingEnabled=false;
+      x.drawImage(im,0,0,cw,ch);
+      var px=x.getImageData(0,0,cw,ch).data, tot=cw*ch, tr=0, semi=0, op=0, map={}, uniq=0;
+      for(var q=0;q<px.length;q+=4){
+        var a=px[q+3];
+        if(a===0){ tr++; continue; }
+        if(a<255) semi++; else op++;
+        var key=px[q]+','+px[q+1]+','+px[q+2]+','+a;
+        if(map[key]===undefined){ if(uniq<20000){ map[key]=1; uniq++; } } else map[key]++;
+      }
+      lg('   аналіз (вибірка '+cw+'×'+ch+'): повністю прозорих '+(tr*100/tot).toFixed(1)+'%, напівпрозорих '+(semi*100/tot).toFixed(1)+'%, непрозорих '+(op*100/tot).toFixed(1)+'%');
+      lg('   різних кольорів: '+uniq+(uniq>=20000?'+':'')+(uniq<=60?' — це ЧИСТА палітра, інтенсивність відновлюється точно':uniq<=400?' — палітра з легким згладженням':' — багато відтінків, є згладжування/підписи; відновлення за кольором буде приблизним'), uniq<=400?'ok':'wr');
+      var top=Object.keys(map).sort(function(a,b){ return map[b]-map[a]; }).slice(0,14);
+      lg('   найчастіші кольори (R,G,B,A : % від непрозорих):');
+      var nonT=Math.max(1,semi+op);
+      top.forEach(function(k){ lg('     '+k+' : '+(map[k]*100/nonT).toFixed(1)+'%'); });
+    }catch(e){ lg('   ❌ аналіз пікселів не вдався: '+(e&&e.message?e.message:e),'er'); }
+  }
+  lg('\nЯкщо файл < 1.5 МБ, прозорих пікселів багато, а кольорів небагато — PNG підходить. Дивись «у пам\'яті ≈ … МБ» (понад ~30 МБ для iPhone важко).','wr');
+}
+
+
+// ── 06.10.2026: ЗВІРКА PNG O-A0058-006 З ЧИСЛОВОЮ СІТКОЮ O-A0059-001 ──
+// Мета: (1) з'ясувати проєкцію PNG (рівнокутна чи Меркатор по вертикалі) і порядок рядків сітки — вибираємо комбінацію, де кольори PNG найкраще збігаються з дощем у сітці;
+// (2) ЕМПІРИЧНО побудувати палітру «колір PNG → dBZ», усереднюючи значення сітки під кожним кольором. Потрібен дощ у зоні Тайваню (інакше мало точок для звірки).
+// Вантажить сітку (~9 МБ, ~13 с) і PNG (~150 КБ). PNG зменшується до 1800×1800 БЕЗ згладжування (як і планується в застосунку).
+function tgMercY(lat){ return Math.log(Math.tan(Math.PI/4+lat*Math.PI/360)); }
+function tgInvMerc(m){ return (2*Math.atan(Math.exp(m))-Math.PI/2)*180/Math.PI; }
+async function testPngVsGrid(){
+  try{ await testPngVsGridInner(); }
+  catch(e){ lg('❌ ТЕСТ ВПАВ: '+(e&&e.message?e.message:e)+(e&&e.stack?'\n'+String(e.stack).slice(0,400):''),'er'); }
+}
+async function testPngVsGridInner(){
+  lg('— ЗВІРКА PNG (O-A0058-006) З СІТКОЮ (O-A0059-001), v2: класи кольорів —','wr');
+  var t00=Date.now();
+  var NX=921, NY=881, RES=0.0125, LON0=115, LAT0=18;
+  // 1) СПЕРШУ сітка (її час ставимо за еталон), потім чекаємо, поки PNG «наздожене» її за часом
+  lg('   качаю сітку (~13 с)…');
+  var dg=await call('O-A0059-001','',true); if(!dg) return;
+  var fg={urls:[],fields:[]}; scan(dg,'',fg,0);
+  var gridTime='?'; fg.fields.forEach(function(x){ if(/DateTime$/.test(x[0])) gridTime=x[1]; });
+  var best=longestString(dg,0,{len:0,val:''});
+  var gv=new Float32Array(NX*NY); gv.fill(-999);
+  var sv=best.val, sl=sv.length, gk=0, gi=0, gc;
+  while(gi<sl && gk<NX*NY){
+    gc=sv.charCodeAt(gi);
+    if(gc===45 || gc===46 || (gc>=48 && gc<=57)){
+      var gj=gi+1;
+      while(gj<sl){
+        gc=sv.charCodeAt(gj);
+        if(gc===46 || (gc>=48 && gc<=57)) gj++;
+        else if(gc===101 || gc===69){ gj++; var g2c=sv.charCodeAt(gj); if(g2c===43 || g2c===45) gj++; }
+        else break;
+      }
+      gv[gk++]=parseFloat(sv.substring(gi,gj)); gi=gj;
+    } else gi++;
+  }
+  dg=null; best=null; sv=null;
+  if(gk!==NX*NY){ lg('❌ у сітці розібрано '+gk+' значень, очікувалось '+(NX*NY),'er'); return; }
+  lg('   сітка: час '+gridTime+', розібрано '+gk+' значень');
+  // 2) PNG: чекаємо збігу часу (до ~4 хв)
+  var url=null, pngTime='?', tries=0;
+  while(true){
+    var dp=await call('O-A0058-006','',true); if(!dp) return;
+    var fp={urls:[],fields:[]}; scan(dp,'',fp,0);
+    fp.fields.forEach(function(x){ if(/DateTime$/.test(x[0])) pngTime=x[1]; });
+    try{ url=dp.cwaopendata.dataset.resource.ProductURL; }catch(e){}
+    if(pngTime===gridTime || pngTime>gridTime || tries>=12) break;
+    tries++;
+    lg('   PNG ще '+pngTime+', сітка '+gridTime+' — чекаю 20 с (спроба '+tries+'/12)…','wr');
+    await new Promise(function(r){ setTimeout(r,20000); });
+  }
+  if(!url){ lg('❌ нема ProductURL','er'); return; }
+  lg('   час PNG: '+pngTime+' | час сітки: '+gridTime+(pngTime===gridTime?' — ЗБІГАЮТЬСЯ':' — РІЗНІ, результат буде менш точним'), pngTime===gridTime?'ok':'wr');
+  var blob; try{ var r=await fetch(url+'?_='+Date.now()); blob=await r.blob(); }catch(e){ lg('❌ PNG не завантажився: '+e.message,'er'); return; }
+  var im=await new Promise(function(res){ var i=new Image(); i.onload=function(){res(i);}; i.onerror=function(){res(null);}; i.src=URL.createObjectURL(blob); });
+  if(!im){ lg('❌ PNG не декодується','er'); return; }
+  var N=1800, c=document.createElement('canvas'); c.width=N; c.height=N;
+  var x=c.getContext('2d',{willReadFrequently:true}); x.imageSmoothingEnabled=false; x.drawImage(im,0,0,N,N);
+  var px=x.getImageData(0,0,N,N).data;
+  im=null;
+  lg('   PNG '+(blob.size/1024).toFixed(0)+' КБ, зменшено до '+N+'×'+N);
+  var LONW=118, LONE=124, LATS=20.5, LATN=26.5;
+  // «дощові» пікселі PNG: майже непрозорі й не чорні
+  var rain=[];
+  for(var py=0;py<N;py++){ for(var pxx=0;pxx<N;pxx++){
+    var o=(py*N+pxx)*4;
+    if(px[o+3]<200) continue;
+    if(px[o]+px[o+1]+px[o+2]<60) continue;
+    rain.push(py*N+pxx);
+  } }
+  lg('   «дощових» пікселів у PNG: '+rain.length);
+  if(rain.length<300){ lg('⚠️ Замало дощу в зоні для надійної звірки. Повтори, коли над Тайванем є дощ.','wr'); return; }
+  // 3) проєкція: рівнокутна × порядок рядків (контроль)
+  function gridAt(lat,lon,flip){
+    var i=Math.round((lon-LON0)/RES), j=Math.round((lat-LAT0)/RES);
+    if(i<0||i>=NX||j<0||j>=NY) return null;
+    if(flip) j=NY-1-j;
+    return gv[j*NX+i];
+  }
+  function geoEq(idx){
+    var py=Math.floor(idx/N), pxx=idx%N;
+    return [LATN-(py+0.5)/N*(LATN-LATS), LONW+(pxx+0.5)/N*(LONE-LONW)];
+  }
+  var step=Math.max(1,Math.floor(rain.length/20000)), hitS=0, totS=0;
+  for(var k=0;k<rain.length;k+=step){ var g=geoEq(rain[k]), v=gridAt(g[0],g[1],false); if(v===null) continue; totS++; if(v>=10) hitS++; }
+  lg('   контроль проєкції (рівнокутна, рядки пд→пн): збіг '+(totS?(hitS*100/totS).toFixed(1):'?')+'%', (hitS/Math.max(1,totS))>0.8?'ok':'wr');
+  // 4) КЛАСИ КОЛЬОРІВ → розподіл dBZ у сітці під ними
+  var ORDER=['cyan 0,255,255 (обрамлення?)','блакитний 0,150-254,255','синій 0,60-149,255','чистий синій 0,0-59,255','зелений яскравий 0,230-255,0','зелений середній 0,190-229,0','зелений темний 0,100-189,0','жовтий 255,230-255,0','жовтий темний 255,190-229,0','оранжевий 255,100-189,0','червоно-оранж 255,40-99,0','червоний 255,0-39,0','темно-червоний 120-254,0-40,0','пурпурний','інше'];
+  function cls(r,g,b){
+    if(r===0 && g===255 && b===255) return ORDER[0];
+    if(r<=40 && b>=200){ if(g>=150) return ORDER[1]; if(g>=60) return ORDER[2]; return ORDER[3]; }
+    if(r<=40 && b<=40 && g>=100){ if(g>=230) return ORDER[4]; if(g>=190) return ORDER[5]; return ORDER[6]; }
+    if(r>=240 && b<=60){ if(g>=230) return ORDER[7]; if(g>=190) return ORDER[8]; if(g>=100) return ORDER[9]; if(g>=40) return ORDER[10]; return ORDER[11]; }
+    if(r>=120 && r<240 && g<=40 && b<=60) return ORDER[12];
+    if(r>=150 && b>=150 && g<=100) return ORDER[13];
+    return ORDER[14];
+  }
+  var st={};
+  ORDER.forEach(function(n){ st[n]={n:0,dry:0,a15:0,a25:0,a35:0,vals:[]}; });
+  var useN=0;
+  for(var k2=0;k2<rain.length;k2++){
+    var idx=rain[k2], o2=idx*4, g3=geoEq(idx), v3=gridAt(g3[0],g3[1],false);
+    if(v3===null || v3<=-900) continue;
+    if(v3<0) v3=0; // «−99» = немає ехо
+    var e=st[cls(px[o2],px[o2+1],px[o2+2])];
+    e.n++; useN++;
+    if(v3<5) e.dry++;
+    if(v3>=15) e.a15++; if(v3>=25) e.a25++; if(v3>=35) e.a35++;
+    if(e.vals.length<40000) e.vals.push(v3);
+  }
+  lg('   Пікселів зі значенням сітки: '+useN);
+  lg('   КЛАС КОЛЬОРУ → медіана dBZ у сітці [10%…90%] · частка з ≥15 / ≥25 / ≥35 dBZ · «сухо» (<5 dBZ) · n:');
+  ORDER.forEach(function(nm){
+    var e=st[nm]; if(e.n<20) return;
+    e.vals.sort(function(a,b){ return a-b; });
+    function P(p){ return e.vals[Math.min(e.vals.length-1,Math.floor(p*e.vals.length))]; }
+    lg('     '+nm+' → '+P(0.5).toFixed(0)+' ['+P(0.1).toFixed(0)+'…'+P(0.9).toFixed(0)+'] · ≥15: '+Math.round(e.a15*100/e.n)+'% · ≥25: '+Math.round(e.a25*100/e.n)+'% · ≥35: '+Math.round(e.a35*100/e.n)+'% · сухо '+Math.round(e.dry*100/e.n)+'% · n='+e.n);
+  });
+  // 5) ДЕКОДЕР «колір → dBZ»: проєкція на ламану з опорних кольорів (медіани класів із таблиці вище), лінійна інтерполяція всередині сегмента.
+  var PAL=[[0,200,255,5],[0,100,255,9],[0,30,255,13],[0,255,0,17],[0,210,0,20],[0,160,0,24],[255,255,0,30],[255,210,0,34],[255,150,0,38],[255,70,0,42],[255,20,0,45],[219,0,0,48]];
+  function decodeDbz(r,g,b){
+    var bd=1e18, bv=0;
+    for(var q=0;q<PAL.length-1;q++){
+      var A=PAL[q], B=PAL[q+1];
+      var vx=B[0]-A[0], vy=B[1]-A[1], vz=B[2]-A[2];
+      var wx=r-A[0], wy=g-A[1], wz=b-A[2];
+      var ll=vx*vx+vy*vy+vz*vz, t=ll>0?(wx*vx+wy*vy+wz*vz)/ll:0;
+      if(t<0) t=0; else if(t>1) t=1;
+      var dx=wx-t*vx, dy=wy-t*vy, dz=wz-t*vz, dd=dx*dx+dy*dy+dz*dz;
+      if(dd<bd){ bd=dd; bv=A[3]+(B[3]-A[3])*t; }
+    }
+    return bv;
+  }
+  // клас показу в палітрі застосунку (пороги dBZ ≈ 0.5 / 2 / 6 мм/год за Z=200R^1.6): 0 приховано <15, 1 слабкий 15–18, 2 зелений 18–28, 3 жовтий 28–35.5, 4 червоний ≥35.5
+  function dispClass(d){ return d<15?0 : d<18?1 : d<28?2 : d<35.5?3 : 4; }
+  var CN=['прихов.(<15)','слабкий(15–18)','зелений(18–28)','жовтий(28–35.5)','червоний(≥35.5)'];
+  var conf=[], ci, cj; for(ci=0;ci<5;ci++){ conf.push([0,0,0,0,0]); }
+  var ae=0, bias=0, nn=0, w3=0, w5=0, aeAll=0, nAll=0, stp=Math.max(1,Math.floor(rain.length/40000));
+  var other={}; // топ кольорів класу «інше»
+  for(var k3=0;k3<rain.length;k3+=stp){
+    var idx3=rain[k3], o3=idx3*4, gg=geoEq(idx3), vv=gridAt(gg[0],gg[1],false);
+    if(vv===null || vv<=-900) continue; if(vv<0) vv=0;
+    var dd3=decodeDbz(px[o3],px[o3+1],px[o3+2]);
+    nAll++; aeAll+=Math.abs(dd3-vv);
+    conf[dispClass(vv)][dispClass(dd3)]++;
+    if(vv>=5){ var er=dd3-vv; ae+=Math.abs(er); bias+=er; nn++; if(Math.abs(er)<=3) w3++; if(Math.abs(er)<=5) w5++; }
+    if(cls(px[o3],px[o3+1],px[o3+2])===ORDER[14]){ var kk=px[o3]+','+px[o3+1]+','+px[o3+2]; var oo=other[kk]; if(!oo){ oo=other[kk]={n:0,d:0}; } oo.n++; oo.d+=dd3; }
+  }
+  lg('   ДЕКОДЕР (вибірка '+nn+' пікселів із сіткою ≥5 dBZ): середня помилка '+(ae/Math.max(1,nn)).toFixed(1)+' dBZ, зсув '+(bias/Math.max(1,nn)).toFixed(1)+', в межах ±3 dBZ: '+Math.round(w3*100/Math.max(1,nn))+'%, ±5 dBZ: '+Math.round(w5*100/Math.max(1,nn))+'%', (ae/Math.max(1,nn))<4?'ok':'wr');
+  lg('   Матриця класів показу: рядок = ЩО В СІТЦІ, стовпець = ЩО ДАВ ДЕКОДЕР (кількість):');
+  lg('     ряд\\ст   '+CN.map(function(n){ return n.slice(0,9); }).join(' | '));
+  var okC=0, totC=0;
+  for(ci=0;ci<5;ci++){ var rt=0; for(cj=0;cj<5;cj++){ rt+=conf[ci][cj]; } totC+=rt; okC+=conf[ci][ci]; lg('     '+CN[ci]+': '+conf[ci].join(' | ')+'  (збіг '+(rt?Math.round(conf[ci][ci]*100/rt):0)+'%)'); }
+  lg('   Загальна точність класу показу: '+Math.round(okC*100/Math.max(1,totC))+'%. «Різниця на 1 клас» допустима для візуалізації; для попередження важливо, щоб ≥18 dBZ не губилось.', okC/Math.max(1,totC)>0.7?'ok':'wr');
+  var ok2=Object.keys(other).sort(function(a,b){ return other[b].n-other[a].n; }).slice(0,12);
+  lg('   Найчастіші кольори класу «інше» (колір → декодований dBZ, n):');
+  ok2.forEach(function(kx){ lg('     '+kx+' → '+(other[kx].d/other[kx].n).toFixed(0)+', n='+other[kx].n); });
+  lg('   Читати так: якщо в класу «≥15» ≈ 90–100%, цей колір надійно означає дощ; якщо «сухо» велике — це край плями або обрамлення.');
+  lg('   Загалом '+((Date.now()-t00)/1000).toFixed(0)+' с','ok');
+  lg('\nНадішли звіт: за ним зафіксую правило «колір → клас дощу» для застосунку.','wr');
+}
+
+
+// ── 06.10.2026: ВІТЕР ЗІ СТАНЦІЙ CWA. O-A0001-001 (усі автоматичні станції, погодинно) і O-A0003-001 (10-хвилинні синоптичні).
+// Перевіряємо: скільки станцій, які поля вітру/поривів, чи свіжі, чи є пропуски (−99), охоплення і густота.
+function wxNum(v){ var n=parseFloat(v); return (isNaN(n) || n<=-90) ? null : n; }
+function wxPick(st){
+  var we=st.WeatherElement||st.weatherElement||{};
+  var lat=null, lon=null, g=st.GeoInfo||{}, cs=g.Coordinates||[];
+  for(var i=0;i<cs.length;i++){ if(/WGS84/i.test(cs[i].CoordinateName||'') || lat===null){ lat=parseFloat(cs[i].StationLatitude); lon=parseFloat(cs[i].StationLongitude); } }
+  if(lat===null || isNaN(lat)){ lat=parseFloat(st.StationLatitude); lon=parseFloat(st.StationLongitude); }
+  var gi=we.GustInfo||{};
+  var obs=(st.ObsTime&&st.ObsTime.DateTime)||'';
+  return {name:st.StationName||st.stationName||'?', id:st.StationId||'', lat:lat, lon:lon, obs:obs,
+          ws:wxNum(we.WindSpeed), wd:wxNum(we.WindDirection), gust:wxNum(gi.PeakGustSpeed),
+          gustWd:wxNum(gi.Occurred_at&&gi.Occurred_at.WindDirection), gustAt:(gi.Occurred_at&&gi.Occurred_at.DateTime)||'',
+          alt:parseFloat(g.StationAltitude), we:we};
+}
+async function testWind(){
+  lg('— ВІТЕР: станції CWA —','wr');
+  var pos=await getPos();
+  var ids=['O-A0001-001','O-A0003-001'];
+  for(var q=0;q<ids.length;q++){
+    var id=ids[q];
+    lg('\n▸ '+id,'wr');
+    var d=await call(id);
+    if(!d) continue;
+    var recs=d.records||{};
+    var arr=recs.Station||recs.station||recs.location||[];
+    lg('   станцій у відповіді: '+arr.length+' (records: '+keys(recs)+')');
+    if(!arr.length){ lg('   '+JSON.stringify(d).slice(0,400),'er'); continue; }
+    var weKeys={}; try{ var w0=arr[0].WeatherElement||arr[0].weatherElement||{}; Object.keys(w0).forEach(function(k){ weKeys[k]=1; }); }catch(e){}
+    lg('   поля WeatherElement: '+Object.keys(weKeys).join(', '));
+    try{ var gi0=(arr[0].WeatherElement||{}).GustInfo; if(gi0) lg('   GustInfo (приклад): '+JSON.stringify(gi0).slice(0,300)); }catch(e){}
+    var P=arr.map(wxPick).filter(function(p){ return !isNaN(p.lat) && !isNaN(p.lon); });
+    var okWs=P.filter(function(p){ return p.ws!==null && p.wd!==null; });
+    var okG=P.filter(function(p){ return p.gust!==null; });
+    lg('   зі швидкістю+напрямом вітру: '+okWs.length+' / '+P.length+';  з поривом (PeakGustSpeed): '+okG.length);
+    // свіжість
+    var times=P.map(function(p){ return p.obs; }).filter(Boolean).sort();
+    if(times.length) lg('   час спостережень: найстаріший '+times[0]+', найновіший '+times[times.length-1]);
+    var gAt=okG.map(function(p){ return p.gustAt; }).filter(Boolean).sort();
+    if(gAt.length) lg('   час поривів (Occurred_at): від '+gAt[0]+' до '+gAt[gAt.length-1]+'  ← це «пік за період», не обов\'язково зараз','wr');
+    // діапазони
+    function rng(a){ if(!a.length) return '—'; var mn=1e9,mx=-1e9,sum=0; a.forEach(function(v){ if(v<mn) mn=v; if(v>mx) mx=v; sum+=v; }); return 'мін '+mn+', сер '+(sum/a.length).toFixed(1)+', макс '+mx; }
+    lg('   швидкість, м/с: '+rng(okWs.map(function(p){ return p.ws; })));
+    lg('   пориви, м/с: '+rng(okG.map(function(p){ return p.gust; })));
+    // межі і густота
+    var la=P.map(function(p){ return p.lat; }), lo=P.map(function(p){ return p.lon; });
+    lg('   охоплення: lat '+Math.min.apply(null,la).toFixed(2)+'…'+Math.max.apply(null,la).toFixed(2)+', lon '+Math.min.apply(null,lo).toFixed(2)+'…'+Math.max.apply(null,lo).toFixed(2));
+    // середня відстань до найближчого сусіда (вибірка)
+    var samp=okWs.filter(function(p,i){ return i%Math.max(1,Math.floor(okWs.length/80))===0; }), sumNn=0, cnt=0;
+    samp.forEach(function(a){ var bd=1e9; okWs.forEach(function(b){ if(b===a) return; var dd=dist(a.lat,a.lon,b.lat,b.lon); if(dd<bd) bd=dd; }); if(bd<1e9){ sumNn+=bd; cnt++; } });
+    if(cnt) lg('   середня відстань до найближчої сусідньої станції: '+(sumNn/cnt).toFixed(1)+' км (чим менше, тим точніша карта)');
+    // топ пориви
+    okG.sort(function(a,b){ return b.gust-a.gust; });
+    lg('   топ-5 поривів: '+okG.slice(0,5).map(function(p){ return p.name+' '+p.gust+' м/с'; }).join('; '));
+    // найближча до користувача
+    if(pos){
+      var best=null,bd2=1e9; okWs.forEach(function(p){ var dd=dist(pos[0],pos[1],p.lat,p.lon); if(dd<bd2){ bd2=dd; best=p; } });
+      if(best) lg('   найближча станція з вітром: '+best.name+', '+bd2.toFixed(1)+' км; вітер '+best.ws+' м/с, напрям '+best.wd+'°, порив '+(best.gust===null?'—':best.gust+' м/с')+', час '+best.obs,'ok');
+    } else lg('   (геолокація недоступна — найближчу станцію не рахую)','wr');
+    lg('   приклад повного запису: '+JSON.stringify(arr[0]).slice(0,700));
+  }
+  lg('\nГотово. Звіт — «Копіювати звіт». Дивимось: скільки станцій, чи свіжий вітер, що таке «порив» (за який період) і яка густота.','ok');
+}
+
+async function testGrid(){
+  lg('— СІТКА QPESUMS O-A0059-001 —','wr');
+  var d=await call(GRID_ID,'',true);
+  if(!d) return;
+  lg('   верхній рівень: '+keys(d));
+  var f={urls:[],fields:[]}; scan(d,'',f,0);
+  f.fields.slice(0,30).forEach(function(x){ lg('   '+x[0]+' = '+x[1]); });
+  var best=longestString(d,0,{len:0,val:''});
+  lg('   найдовший рядок: '+best.len+' символів');
+  if(best.len>1000){
+    var vals=best.val.split(/[\s,]+/).filter(function(v){ return v!==''; }).map(parseFloat);
+    var mn=1e9,mx=-1e9,over=0,bad=0;
+    vals.forEach(function(v){ if(isNaN(v)){ bad++; return; } if(v<mn) mn=v; if(v>mx) mx=v; if(v>15) over++; });
+    lg('   значень: '+vals.length+' (не числа: '+bad+'), мін '+mn+', макс '+mx+', понад 15: '+over);
+    lg('   перші 12: '+vals.slice(0,12).join(', '));
+    lg('   очікувано X*Y: див. GridDimensionX/Y вище','wr');
+  }
+}
+
+function dist(a,b,c,d){ var t=Math.PI/180,R=6371,dl=(c-a)*t,dn=(d-b)*t; var x=Math.sin(dl/2)*Math.sin(dl/2)+Math.cos(a*t)*Math.cos(c*t)*Math.sin(dn/2)*Math.sin(dn/2); return 2*R*Math.asin(Math.sqrt(x)); }
+
+function getPos(){
+  return new Promise(function(res){
+    if(!navigator.geolocation){ res(null); return; }
+    navigator.geolocation.getCurrentPosition(function(p){ res([p.coords.latitude,p.coords.longitude]); }, function(){ res(null); }, {enableHighAccuracy:false,timeout:6000});
+  });
+}
+
+async function testRain(){
+  lg('— ДОЩОМІРИ —','wr');
+  var d=await call(RAIN_ID);
+  if(!d) return;
+  lg('   success: '+d.success+'; верхній рівень: '+keys(d));
+  var recs=d.records||{};
+  lg('   records: '+keys(recs));
+  var arr=recs.Station||recs.station||recs.location||[];
+  lg('   станцій: '+arr.length);
+  if(!arr.length){ lg('   '+JSON.stringify(d).slice(0,400)); return; }
+  lg('   приклад: '+JSON.stringify(arr[0]).slice(0,500));
+  var pos=await getPos();
+  if(!pos){ lg('   (геолокація недоступна — найближчу станцію не рахую)','wr'); return; }
+  var best=null,bd=1e9;
+  arr.forEach(function(s){
+    var g=s.GeoInfo||{}; var la=parseFloat(g.Coordinates&&g.Coordinates[0]?g.Coordinates[0].StationLatitude:s.StationLatitude);
+    var lo=parseFloat(g.Coordinates&&g.Coordinates[0]?g.Coordinates[0].StationLongitude:s.StationLongitude);
+    if(isNaN(la)||isNaN(lo)) return;
+    var dd=dist(pos[0],pos[1],la,lo); if(dd<bd){ bd=dd; best=s; }
+  });
+  if(best) lg('   Найближча станція: '+(best.StationName||best.stationName||'?')+', '+bd.toFixed(1)+' км\n   '+JSON.stringify(best.RainfallElement||best.weatherElement||best).slice(0,400),'ok');
+  else lg('   Координати станцій не розпізнано — див. приклад вище','wr');
+}
+
+async function testCustom(isFile){
+  var id=document.getElementById('cust').value.trim();
+  if(!id){ lg('❌ Введіть ID набору','er'); return; }
+  lg('— '+id+(isFile?' (fileapi)':' (datastore)')+' —','wr');
+  var d=await call(id,'',isFile);
+  if(!d) return;
+  lg('   верхній рівень: '+keys(d));
+  var f={urls:[],fields:[]};
+  scan(d,'',f,0);
+  f.fields.slice(0,30).forEach(function(x){ lg('   '+x[0]+' = '+x[1]); });
+  f.urls.slice(0,3).forEach(function(x){ lg('   🖼 '+x[0]+' = '+x[1],'ok'); });
+  lg('   початок відповіді: '+JSON.stringify(d).slice(0,500));
+}
+
+async function runAll(){
+  clearOut();
+  lg('CWA тест, '+new Date().toLocaleString('uk-UA'));
+  lg('Браузер: '+navigator.userAgent.slice(0,120));
+  await testRadar();
+  await testTransparent();
+  await testRain();
+  await testCors();
+  await testGrid();
+  lg('\nГотово. Натисніть «Копіювати звіт» і надішліть мені.','ok');
+}
+
+function copyReport(){
+  var safe=report.replace(/CWA-[A-Z0-9-]{8,}/g,'CWA-***');
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(safe).then(function(){ alert('Скопійовано (ключ приховано)'); }, function(){ fallbackCopy(safe); });
+  } else fallbackCopy(safe);
+}
+function fallbackCopy(t){
+  var ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); alert('Скопійовано (ключ приховано)'); }catch(e){ alert('Не вдалось скопіювати — виділіть текст вручну'); }
+  document.body.removeChild(ta);
+}
+</script>
+</body>
+</html>
