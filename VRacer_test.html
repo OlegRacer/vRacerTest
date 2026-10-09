@@ -8236,7 +8236,7 @@ function wireCustomMapGestures(st){
       e.preventDefault();
       const d=touchDist(e.touches[0],e.touches[1]);
       if(pinchStartDist>0){
-        const newZoom=pinchStartZoom+Math.log2(d/pinchStartDist);
+        const newZoom=pinchStartZoom+dzGain()*Math.log2(d/pinchStartDist); // 08.10.2026: множник чутливості (ТЕСТ → Мертва зона)
         // 25.08.2026: ЯК У GOOGLE MAPS — якір рахуємо ЗАНОВО щокадру з
         // ПОТОЧНОЇ середини пальців, а не один раз на старті жесту. Раніше
         // фіксований якір ігнорував природний дрейф середини пальців під
@@ -14138,9 +14138,11 @@ function cwaScanRoute(){
 const CWA_WARN={state:'clear', t:0, a5:false};
 // 08.10.2026: «МЕРТВА ЗОНА» руху великої карти (захист від вібрації скутера). Режими: std — як було (поріг 6,5 px + пауза 280 мс перед паном),
 // off — майже вимкнена (поріг 1 px, без паузи), custom — свої значення (вкладка ТЕСТ). Зберігається між запусками.
-const MapDZ=Object.assign({mode:'std', px:6.5, ms:280}, lg('mapdz')||{});
+const MapDZ=Object.assign({mode:'std', px:6.5, ms:280, zg:2}, lg('mapdz')||{});
 function dzPx(){ return MapDZ.mode==='off' ? 1 : MapDZ.mode==='custom' ? Math.max(0, Math.min(30, +MapDZ.px||0)) : 6.5; }
 function dzMs(){ return MapDZ.mode==='off' ? 0 : MapDZ.mode==='custom' ? Math.max(0, Math.min(800, +MapDZ.ms||0)) : 280; }
+// Чутливість пінч-зуму: множник на зміну відстані між пальцями (карта округлює зум до цілого рівня, тому при 1,0 другий крок майже недосяжний). std=1, off=2, custom=zg.
+function dzGain(){ return MapDZ.mode==='off' ? 2 : MapDZ.mode==='custom' ? Math.max(0.5, Math.min(4, +MapDZ.zg||1)) : 1; }
 function mapDzSave(){ ls('mapdz', MapDZ); }
 function mapDzSet(mode){ MapDZ.mode=mode; mapDzSave(); mapDzUpdateUI(); }
 function mapDzNum(k, v){ const n=parseFloat(String(v).replace(',','.')); if(isNaN(n)) return; MapDZ[k]=n; mapDzSave(); mapDzUpdateUI(); }
@@ -14150,7 +14152,7 @@ function mapDzUpdateUI(){
     const on=MapDZ.mode===m; b.style.background=on?'#0a84ff':'#222'; b.style.color='#fff';
   });
   const row=document.getElementById('dz_custom_row'); if(row) row.style.display=MapDZ.mode==='custom'?'block':'none';
-  const info=document.getElementById('dz_info'); if(info) info.textContent='Зараз: поріг '+dzPx()+' px, пауза '+dzMs()+' мс';
+  const info=document.getElementById('dz_info'); if(info) info.textContent='Зараз: поріг '+dzPx()+' px, пауза '+dzMs()+' мс, чутливість зуму ×'+dzGain();
 }
 // 08.10.2026: перевірка дощу/вітру — кожні 5 км шляху (а не за таймером). Негайно: при вмиканні кнопки і при кожному новому кадрі даних (радар/станції).
 const WX_CHECK_KM=5;
@@ -16504,14 +16506,15 @@ function renderTestSettingsTab(body){
   const bs='flex:1;height:44px;border:none;border-radius:10px;background:#222;color:#fff;font-size:14px;font-weight:700;';
   body.innerHTML=
     '<div class="gt">🗺 Мертва зона руху карти</div>'
-    +'<div style="font-size:12px;color:var(--muted);padding:2px 5px 6px;line-height:1.5;">Затримка перед рухом карти пальцем (захист від вібрації скутера). Стандарт: поріг 6,5 px і пауза 280 мс. «Вимкнена»: 1 px і без паузи — карта реагує одразу, але на тремтінні може смикатись, а точний тап частіше вважається рухом.</div>'
+    +'<div style="font-size:12px;color:var(--muted);padding:2px 5px 6px;line-height:1.5;">Затримка перед рухом карти пальцем (захист від вібрації скутера). Стандарт: поріг 6,5 px і пауза 280 мс. «Вимкнена»: 1 px, без паузи і чутливість зуму ×2 (карта реагує одразу, але на тремтінні може смикатись, а точний тап частіше вважається рухом). Чутливість зуму: ×1 — як було; більше число — зум з меншого руху пальців і кілька рівнів за один пінч.</div>'
     +'<div style="display:flex;gap:6px;padding:0 5px;">'
     +'<button class="ab" id="dzb_std" style="flex:1;" onclick="mapDzSet(\'std\')">Стандарт</button>'
     +'<button class="ab" id="dzb_custom" style="flex:1;" onclick="mapDzSet(\'custom\')">Індивід.</button>'
     +'<button class="ab" id="dzb_off" style="flex:1;" onclick="mapDzSet(\'off\')">Вимкнена</button></div>'
     +'<div id="dz_custom_row" style="display:none;padding:8px 5px 0;font-size:13px;">'
     +'Поріг, px (0–30): <input type="number" inputmode="decimal" step="0.5" min="0" max="30" value="'+MapDZ.px+'" style="width:70px;" oninput="mapDzNum(\'px\', this.value)"> '
-    +'&nbsp; Пауза, мс (0–800): <input type="number" inputmode="numeric" step="10" min="0" max="800" value="'+MapDZ.ms+'" style="width:70px;" oninput="mapDzNum(\'ms\', this.value)"></div>'
+    +'&nbsp; Пауза, мс (0–800): <input type="number" inputmode="numeric" step="10" min="0" max="800" value="'+MapDZ.ms+'" style="width:70px;" oninput="mapDzNum(\'ms\', this.value)">'
+    +'<div style="padding-top:8px;">Чутливість зуму ×(0,5–4): <input type="number" inputmode="decimal" step="0.1" min="0.5" max="4" value="'+MapDZ.zg+'" style="width:70px;" oninput="mapDzNum(\'zg\', this.value)"></div></div>'
     +'<div id="dz_info" style="font-size:12px;color:var(--muted);padding:6px 5px 0;"></div>'
     +'<div class="gt" style="margin-top:16px;">🧪 Симуляція поїздки</div>'
     +'<div style="font-size:12px;color:var(--muted);padding:2px 5px 8px;line-height:1.5;">Машина їде по завантаженому маршруту й подає у застосунок позиції так само, як справжній GPS: працюють смуги, повороти, озвучка, радари камер, авто-зум. Поки симуляція активна, справжній GPS ігнорується.</div>'
