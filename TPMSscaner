@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLE TPMS Scanner - Yamaha</title>
+    <style>
+        body { 
+            background: #121212; 
+            color: #e0e0e0; 
+            font-family: monospace; 
+            padding: 12px; 
+            margin: 0; 
+        }
+        h1 { 
+            font-size: 1.1rem; 
+            color: #00ffcc; 
+            text-align: center; 
+            margin-bottom: 10px;
+        }
+        .status-box {
+            background: #1e1e1e;
+            border: 1px solid #333;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            font-size: 0.85rem;
+            text-align: center;
+        }
+        .btn { 
+            background: #00ffcc; 
+            color: #000; 
+            border: none; 
+            padding: 12px; 
+            width: 100%; 
+            font-size: 1rem; 
+            font-weight: bold; 
+            border-radius: 8px; 
+            margin-bottom: 8px; 
+            cursor: pointer; 
+        }
+        .btn-secondary {
+            background: #333;
+            color: #00ffcc;
+        }
+        .btn:active { background: #00b386; }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            font-size: 0.75rem; 
+            margin-top: 10px; 
+        }
+        th, td { 
+            border: 1px solid #333; 
+            padding: 6px; 
+            text-align: left; 
+            word-break: break-all;
+        }
+        th { background: #1e1e1e; color: #00ffcc; }
+        tr:nth-child(even) { background: #181818; }
+        .persistent { color: #00ff66; font-weight: bold; }
+        .mfg-data { color: #ffaa00; font-size: 0.7rem; }
+    </style>
+</head>
+<body>
+
+    <h1>Yamaha TPMS BLE Finder</h1>
+    <div class="status-box" id="status">Статус: Зупинено</div>
+    
+    <button class="btn" id="scanBtn">Запустити сканування</button>
+    <button class="btn btn-secondary" id="exportBtn">Експортувати у JSON</button>
+    
+    <table id="deviceTable">
+        <thead>
+            <tr>
+                <th>Пристрій / ID / Mfg Data</th>
+                <th>Пакетів</th>
+                <th>RSSI (Cur/Avg)</th>
+            </tr>
+        </thead>
+        <tbody id="deviceList">
+            <tr><td colspan="3" style="text-align:center; color:#666;">Немає даних. Натисніть кнопку старту.</td></tr>
+        </tbody>
+    </table>
+
+    <script>
+        let scanActive = false;
+        let devices = new Map();
+        let scanObj = null;
+
+        const statusEl = document.getElementById('status');
+        const scanBtn = document.getElementById('scanBtn');
+        const exportBtn = document.getElementById('exportBtn');
+        const deviceListEl = document.getElementById('deviceList');
+
+        scanBtn.addEventListener('click', async () => {
+            if (!scanActive) {
+                try {
+                    if (!navigator.bluetooth || !navigator.bluetooth.requestLEScan) {
+                        alert('Помилка: Web Bluetooth Scanning API недоступний. Увімкніть прапорець chrome://flags/#enable-web-bluetooth-scanning у Chrome на Android!');
+                        return;
+                    }
+
+                    statusEl.innerText = 'Статус: Сканування ефіру запущено...';
+                    statusEl.style.color = '#00ff66';
+                    scanBtn.innerText = 'Зупинити сканування';
+                    scanActive = true;
+
+                    // Запит на сканування реклами всіх BLE пристроїв поруч
+                    scanObj = await navigator.bluetooth.requestLEScan({
+                        acceptAllAdvertisements: true,
+                        keepRepeatedDevices: true
+                    });
+
+                    navigator.bluetooth.addEventListener('advertisementreceived', handleAdvertisement);
+
+                } catch (err) {
+                    alert('Помилка запуску: ' + err.message);
+                    statusEl.innerText = 'Статус: Помилка';
+                    statusEl.style.color = '#ff4444';
+                    scanBtn.innerText = 'Запустити сканування';
+                    scanActive = false;
+                }
+            } else {
+                scanActive = false;
+                navigator.bluetooth.removeEventListener('advertisementreceived', handleAdvertisement);
+                statusEl.innerText = 'Статус: Зупинено. Проаналізуйте результати.';
+                statusEl.style.color = '#ffaa00';
+                scanBtn.innerText = 'Запустити сканування знову';
+            }
+        });
+
+        function handleAdvertisement(event) {
+            const device = event.device;
+            const id = device.id;
+            const name = device.name || 'Unknown / Sensor';
+            const rssi = event.rssi;
+            
+            // Збираємо Manufacturer Specific Data (там зазвичай зашитий тиск і статус TPMS)
+            let mfgHex = '';
+            if (event.manufacturerData && event.manufacturerData.size > 0) {
+                for (let [companyId, dataView] of event.manufacturerData.entries()) {
+                    let bytes = new Uint8Array(dataView.buffer);
+                    let hexBytes = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+                    mfgHex = `ID:${companyId.toString(16)} [${hexBytes}]`;
+                }
+            }
+
+            if (!devices.has(id)) {
+                devices.set(id, {
+                    id: id,
+                    name: name,
+                    count: 0,
+                    lastRssi: rssi,
+                    avgRssi: rssi,
+                    mfgHex: mfgHex,
+                    lastSeen: Date.now()
+                });
+            }
+
+            let dev = devices.get(id);
+            dev.count++;
+            dev.lastRssi = rssi;
+            dev.avgRssi = Math.round((dev.avgRssi * (dev.count - 1) + rssi) / dev.count);
+            if (mfgHex) dev.mfgHex = mfgHex;
+            if (name !== 'Unknown / Sensor') dev.name = name;
+            dev.lastSeen = Date.now();
+
+            renderTable();
+        }
+
+        function renderTable() {
+            // Сортуємо за кількістю пакетів: те, що постійно поруч (колеса), буде вгорі
+            let sortedDevices = Array.from(devices.values()).sort((a, b) => b.count - a.count);
+
+            let html = '';
+            sortedDevices.forEach(d => {
+                // Якщо пристрій надіслав понад 15-20 пакетів, підсвічуємо його як стабільний «кандидат»
+                let isPersistent = d.count > 15; 
+                html += `<tr>
+                    <td>
+                        <b style="color:${isPersistent ? '#00ff66' : '#fff'}">${d.name}</b><br>
+                        <span style="font-size:0.65rem; color:#888;">${d.id}</span>
+                        ${d.mfgHex ? '<br><span class="mfg-data">Mfg: ' + d.mfgHex + '</span>' : ''}
+                    </td>
+                    <td class="${isPersistent ? 'persistent' : ''}" style="text-align:center;">${d.count}</td>
+                    <td>${d.lastRssi} <br><span style="font-size:0.65rem; color:#888;">(avg:${d.avgRssi})</span></td>
+                </tr>`;
+            });
+            deviceListEl.innerHTML = html;
+        }
+
+        exportBtn.addEventListener('click', () => {
+            let dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(Array.from(devices.values()), null, 2));
+            let downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `tpms_scan_log_${Date.now()}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        });
+    </script>
+</body>
+</html>
