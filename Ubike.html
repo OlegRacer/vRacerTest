@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YouBike 2.0 Nearby Radar</title>
+    <title>YouBike 2.0 Taiwan Radar</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Leaflet CSS -->
@@ -18,20 +18,27 @@
     <header class="bg-white shadow-md p-2 flex flex-wrap items-center justify-between gap-2">
         <div class="flex items-center space-x-1">
             <span class="text-xl">🚲</span>
-            <h1 class="font-bold text-base text-gray-800">YouBike 2.0</h1>
+            <h1 class="font-bold text-sm text-gray-800">YouBike</h1>
         </div>
 
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-1.5 flex-wrap">
+            <!-- Вибір регіону -->
+            <select id="citySelect" onchange="fetchBikeData()" class="border rounded px-2 py-1 bg-white text-xs font-semibold focus:outline-blue-500">
+                <option value="taoyuan">Таоюань</option>
+                <option value="taipei">Тайбей</option>
+                <option value="newtaipei">Новий Тайбей</option>
+            </select>
+
             <!-- Вибір радіуса -->
             <select id="radiusSelect" onchange="filterAndRenderStations()" class="border rounded px-2 py-1 bg-white text-xs font-semibold focus:outline-blue-500">
-                <option value="1">Радіус: 1 км</option>
-                <option value="0.5">Радіус: 500 м</option>
-                <option value="2">Радіус: 2 км</option>
-                <option value="all">Усі станції</option>
+                <option value="1">1 км</option>
+                <option value="0.5">500 м</option>
+                <option value="2">2 км</option>
+                <option value="all">Усі</option>
             </select>
 
             <!-- Кнопка GPS -->
-            <button onclick="getUserLocation()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-bold transition shadow-sm flex items-center gap-1">
+            <button onclick="getUserLocation()" class="bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded text-xs font-bold transition shadow-sm flex items-center gap-1">
                 🎯 GPS
             </button>
         </div>
@@ -43,8 +50,8 @@
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        // Ініціалізація мапи за замовчуванням (Тайбей / Північний Тайвань)
-        const map = L.map('map').setView([25.0330, 121.5654], 14);
+        // Ініціалізація мапи (центр Таоюаня за замовчуванням)
+        const map = L.map('map').setView([24.9537, 121.2257], 13);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
@@ -56,13 +63,25 @@
         let userCircle = null;
         let userLat = null;
         let userLng = null;
-        let allStationsData = []; // Кеш усіх завантажених станцій
+        let allStationsData = [];
 
-        const directApiUrl = "https://tcgbusfs.blob.core.windows.net/dotapp/youbike/v2/youbike_immediate.json";
+        // Ендпоінти для різних міст
+        const apiEndpoints = {
+            taoyuan: "https://data.tycg.gov.tw/api/v1/rest/datastore/3833d826-801e-49f2-a10c-5d8619f4cb1d?format=json&limit=2000",
+            taipei: "https://tcgbusfs.blob.core.windows.net/dotapp/youbike/v2/youbike_immediate.json",
+            newtaipei: "https://data.ntpc.gov.tw/api/datasets/01077226-5124-4ed3-8dd6-581023a0731e/json?page=0&size=2000"
+        };
 
-        // Формула Haversine для розрахунку відстані між двома точками в км
+        // Координати для центрування при виборі міста
+        const cityCenters = {
+            taoyuan: [24.9537, 121.2257],
+            taipei: [25.0330, 121.5654],
+            newtaipei: [25.0130, 121.4660]
+        };
+
+        // Формула Haversine для відстані в км
         function getDistanceKm(lat1, lon1, lat2, lon2) {
-            const R = 6371; // Радіус Землі в км
+            const R = 6371;
             const dLat = (lat2 - lat1) * Math.PI / 180;
             const dLon = (lon2 - lon1) * Math.PI / 180;
             const a = 
@@ -73,23 +92,43 @@
             return R * c;
         }
 
-        // Завантаження даних з API
+        // Завантаження даних обраного міста
         async function fetchBikeData() {
+            const city = document.getElementById('citySelect').value;
+            const url = apiEndpoints[city];
+
+            // Центруємо мапу на обране місто, якщо GPS ще не використовувався
+            if (!userLat && cityCenters[city]) {
+                map.setView(cityCenters[city], 13);
+            }
+
             try {
-                const response = await fetch(directApiUrl);
+                const response = await fetch(url);
                 if (!response.ok) throw new Error("Помилка API");
-                allStationsData = await response.json();
+                const json = await response.json();
+                
+                // Універсальний парсер для різних форматів JSON у міських адміністраціях
+                if (Array.isArray(json)) {
+                    allStationsData = json;
+                } else if (json.result && Array.isArray(json.result.records)) {
+                    allStationsData = json.result.records;
+                } else if (Array.isArray(json.data)) {
+                    allStationsData = json.data;
+                } else {
+                    allStationsData = [];
+                }
+
                 filterAndRenderStations();
             } catch (error) {
                 console.error("Помилка:", error);
-                alert("Не вдалося завантажити дані YouBike.");
+                alert("Не вдалося завантажити дані YouBike для цього регіону.");
             }
         }
 
-        // Отримання поточної геолокації користувача
+        // Отримання геолокації користувача
         function getUserLocation() {
             if (!navigator.geolocation) {
-                alert("Геолокація не підтримується вашим браузером.");
+                alert("Геолокація не підтримується.");
                 return;
             }
 
@@ -98,11 +137,9 @@
                     userLat = position.coords.latitude;
                     userLng = position.coords.longitude;
 
-                    // Оновлюємо маркер користувача на мапі
                     if (userMarker) map.removeLayer(userMarker);
                     if (userCircle) map.removeLayer(userCircle);
 
-                    // Синя точка геопозиції
                     userMarker = L.circleMarker([userLat, userLng], {
                         radius: 8,
                         fillColor: "#3b82f6",
@@ -112,21 +149,18 @@
                         fillOpacity: 1
                     }).addTo(map).bindPopup("<b>Ви тут</b>").openPopup();
 
-                    // Центруємо мапу на користувача
                     map.setView([userLat, userLng], 15);
-
-                    // Фільтруємо станції навколо
                     filterAndRenderStations();
                 },
                 (error) => {
-                    alert("Не вдалося отримати дозвіл на GPS. Перевірте налаштування браузера.");
+                    alert("Не вдалося отримати дозвіл на GPS.");
                     console.error(error);
                 },
                 { enableHighAccuracy: true }
             );
         }
 
-        // Відображення станцій з урахуванням радіуса
+        // Рендеринг станцій з урахуванням радіуса
         function filterAndRenderStations() {
             markersLayer.clearLayers();
             if (userCircle) map.removeLayer(userCircle);
@@ -136,7 +170,6 @@
             const radiusValue = document.getElementById('radiusSelect').value;
             const maxRadius = radiusValue === 'all' ? Infinity : parseFloat(radiusValue);
 
-            // Якщо є GPS і вибрано радіус, малюємо коло на мапі
             if (userLat && userLng && maxRadius !== Infinity) {
                 userCircle = L.circle([userLat, userLng], {
                     color: '#3b82f6',
@@ -147,7 +180,6 @@
             }
 
             let bounds = [];
-            let renderedCount = 0;
 
             allStationsData.forEach(station => {
                 const lat = parseFloat(station.latitude || station.lat);
@@ -155,19 +187,17 @@
 
                 if (isNaN(lat) || isNaN(lng)) return;
 
-                // Якщо є локація користувача, розраховуємо відстань
                 let distance = null;
                 if (userLat && userLng) {
                     distance = getDistanceKm(userLat, userLng, lat, lng);
-                    if (distance > maxRadius) return; // Пропускаємо станції поза радіусом
+                    if (distance > maxRadius) return;
                 }
 
-                const name = (station.sna || '').replace('YouBike2.0_', '');
+                const name = (station.sna || station.StationName?.Zh_tw || '').replace('YouBike2.0_', '');
                 const bikes = parseInt(station.available_rent_bikes || station.sbi || 0, 10);
                 const emptyDocks = parseInt(station.available_return_bikes || station.bemp || 0, 10);
 
                 bounds.push([lat, lng]);
-                renderedCount++;
 
                 const badgeBg = bikes > 0 ? 'bg-emerald-600' : 'bg-rose-600';
 
@@ -179,7 +209,6 @@
                 });
 
                 const marker = L.marker([lat, lng], { icon: customIcon });
-
                 const distText = distance !== null ? `<p class="text-blue-600 font-medium">📍 Відстань: ${(distance * 1000).toFixed(0)} м</p>` : '';
 
                 marker.bindPopup(`
@@ -197,16 +226,16 @@
                 markersLayer.addLayer(marker);
             });
 
-            // Якщо є маркери і немає визначеної позиції, підганяємо зум
-            if (bounds.length > 0 && !userLat) {
+            if (bounds.length > 0 && !userLat && document.getElementById('citySelect').value === 'taipei') {
                 map.fitBounds(bounds, { padding: [40, 40] });
             }
         }
 
-        // Запуск при завантаженні сторінки
+        // Автозапуск при відкритті
         window.addEventListener('DOMContentLoaded', () => {
+            // За замовчуванням вибираємо Таоюань у списку
+            document.getElementById('citySelect').value = 'taoyuan';
             fetchBikeData();
-            // Автоматично пропонуємо визначити GPS при відкритті
             setTimeout(getUserLocation, 800);
         });
     </script>
