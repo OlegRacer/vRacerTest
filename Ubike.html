@@ -65,11 +65,11 @@
         let userLng = null;
         let allStationsData = [];
 
-        // Ендпоінти для різних міст
+        // Ендпоінти з підтримкою обходу CORS для Таоюаня та Нового Тайбею
         const apiEndpoints = {
-            taoyuan: "https://data.tycg.gov.tw/api/v1/rest/datastore/3833d826-801e-49f2-a10c-5d8619f4cb1d?format=json&limit=2000",
+            taoyuan: "https://corsproxy.io/?url=" + encodeURIComponent("https://data.tycg.gov.tw/api/v1/rest/datastore/3833d826-801e-49f2-a10c-5d8619f4cb1d?format=json&limit=2000"),
             taipei: "https://tcgbusfs.blob.core.windows.net/dotapp/youbike/v2/youbike_immediate.json",
-            newtaipei: "https://data.ntpc.gov.tw/api/datasets/01077226-5124-4ed3-8dd6-581023a0731e/json?page=0&size=2000"
+            newtaipei: "https://corsproxy.io/?url=" + encodeURIComponent("https://data.ntpc.gov.tw/api/datasets/01077226-5124-4ed3-8dd6-581023a0731e/json?page=0&size=2000")
         };
 
         // Координати для центрування при виборі міста
@@ -97,8 +97,7 @@
             const city = document.getElementById('citySelect').value;
             const url = apiEndpoints[city];
 
-            // Центруємо мапу на обране місто, якщо GPS ще не використовувався
-            if (!userLat && cityCenters[city]) {
+            if (cityCenters[city]) {
                 map.setView(cityCenters[city], 13);
             }
 
@@ -107,7 +106,7 @@
                 if (!response.ok) throw new Error("Помилка API");
                 const json = await response.json();
                 
-                // Універсальний парсер для різних форматів JSON у міських адміністраціях
+                // Універсальний парсер форматів
                 if (Array.isArray(json)) {
                     allStationsData = json;
                 } else if (json.result && Array.isArray(json.result.records)) {
@@ -182,6 +181,7 @@
             let bounds = [];
 
             allStationsData.forEach(station => {
+                // Підлаштовуємо назви полів під різні формати JSON (Таоюань vs Тайбей)
                 const lat = parseFloat(station.latitude || station.lat);
                 const lng = parseFloat(station.longitude || station.lng);
 
@@ -225,15 +225,10 @@
 
                 markersLayer.addLayer(marker);
             });
-
-            if (bounds.length > 0 && !userLat && document.getElementById('citySelect').value === 'taipei') {
-                map.fitBounds(bounds, { padding: [40, 40] });
-            }
         }
 
         // Автозапуск при відкритті
         window.addEventListener('DOMContentLoaded', () => {
-            // За замовчуванням вибираємо Таоюань у списку
             document.getElementById('citySelect').value = 'taoyuan';
             fetchBikeData();
             setTimeout(getUserLocation, 800);
