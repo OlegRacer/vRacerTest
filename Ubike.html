@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YouBike 2.0 Open Radar</title>
+    <title>YouBike 2.0 Direct Radar</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Leaflet CSS -->
@@ -21,17 +21,9 @@
             <h1 class="font-bold text-lg text-gray-800">YouBike 2.0</h1>
         </div>
 
-        <div class="flex items-center gap-2">
-            <select id="citySelect" class="border rounded px-2 py-1.5 bg-white text-sm focus:outline-blue-500 font-medium">
-                <option value="taoyuan">Таоюань (Taoyuan)</option>
-                <option value="taipei">Тайбей (Taipei)</option>
-                <option value="newtaipei">Новий Тайбей (New Taipei)</option>
-            </select>
-
-            <button onclick="loadBikeData()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded text-sm font-semibold transition shadow-sm">
-                Оновити
-            </button>
-        </div>
+        <button onclick="loadBikeData()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded text-sm font-semibold transition shadow-sm">
+            Оновити
+        </button>
     </header>
 
     <!-- Мапа -->
@@ -40,8 +32,8 @@
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        // Центр мапи (Таоюань)
-        const map = L.map('map').setView([24.9537, 121.2257], 14);
+        // Початкові координати (Тайбей / Північний Тайвань)
+        const map = L.map('map').setView([25.0330, 121.5654], 13);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
@@ -50,45 +42,31 @@
 
         let markersLayer = L.layerGroup().addTo(map);
 
-        // Посилання з обходом CORS для GitHub Pages
-        const apiEndpoints = {
-            taoyuan: "https://api.allorigins.win/raw?url=" + encodeURIComponent("https://data.tycg.gov.tw/api/v1/rest/datastore/3833d826-801e-49f2-a10c-5d8619f4cb1d?format=json&limit=2000"),
-            taipei: "https://tcgbusfs.blob.core.windows.net/dotapp/youbike/v2/youbike_immediate.json",
-            newtaipei: "https://api.allorigins.win/raw?url=" + encodeURIComponent("https://data.ntpc.gov.tw/api/datasets/01077226-5124-4ed3-8dd6-581023a0731e/json?page=0&size=2000")
-        };
+        // Офіційний прямий Azure CDN URL для YouBike 2.0 (працює без CORS-помилок)
+        const directApiUrl = "https://tcgbusfs.blob.core.windows.net/dotapp/youbike/v2/youbike_immediate.json";
 
         async function loadBikeData() {
-            const city = document.getElementById('citySelect').value;
-            const url = apiEndpoints[city];
-
             markersLayer.clearLayers();
 
             try {
-                const response = await fetch(url);
-                if (!response.ok) throw new Error("Помилка мережі");
+                const response = await fetch(directApiUrl);
+                if (!response.ok) throw new Error("Помилка завантаження API");
                 
-                const json = await response.json();
-                
-                let rawList = [];
-                if (city === 'taoyuan') {
-                    rawList = json.result ? json.result.records : [];
-                } else {
-                    rawList = Array.isArray(json) ? json : [];
-                }
+                const stations = await response.json();
 
-                if (rawList.length === 0) {
-                    alert("Не вдалося отримати дані для обраного міста.");
+                if (!Array.isArray(stations) || stations.length === 0) {
+                    alert("Дані порожні або недоступні.");
                     return;
                 }
 
                 let bounds = [];
 
-                rawList.forEach(station => {
-                    const lat = parseFloat(station.lat || station.latitude);
-                    const lng = parseFloat(station.lng || station.longitude);
+                stations.forEach(station => {
+                    const lat = parseFloat(station.latitude || station.lat);
+                    const lng = parseFloat(station.longitude || station.lng);
                     const name = (station.sna || '').replace('YouBike2.0_', '');
-                    const bikes = parseInt(station.sbi || station.available_rent_bikes || 0, 10);
-                    const emptyDocks = parseInt(station.bemp || station.available_return_bikes || 0, 10);
+                    const bikes = parseInt(station.available_rent_bikes || station.sbi || 0, 10);
+                    const emptyDocks = parseInt(station.available_return_bikes || station.bemp || 0, 10);
 
                     if (isNaN(lat) || isNaN(lng)) return;
 
@@ -124,8 +102,8 @@
                 }
 
             } catch (error) {
-                console.error("Помилка завантаження:", error);
-                alert("Не вдалося завантажити дані.");
+                console.error("Помилка:", error);
+                alert("Не вдалося завантажити дані YouBike.");
             }
         }
 
