@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YouBike Open Radar</title>
+    <title>YouBike 2.0 Open Radar</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Leaflet CSS -->
@@ -18,17 +18,17 @@
     <header class="bg-white shadow-md p-3 flex items-center justify-between">
         <div class="flex items-center space-x-2">
             <span class="text-2xl">🚲</span>
-            <h1 class="font-bold text-lg text-gray-800">YouBike 2.0 Direct</h1>
+            <h1 class="font-bold text-lg text-gray-800">YouBike 2.0</h1>
         </div>
 
         <div class="flex items-center gap-2">
-            <select id="citySelect" class="border rounded px-3 py-1.5 bg-white text-sm focus:outline-blue-500 font-medium">
+            <select id="citySelect" class="border rounded px-2 py-1.5 bg-white text-sm focus:outline-blue-500 font-medium">
                 <option value="taoyuan">Таоюань (Taoyuan)</option>
                 <option value="taipei">Тайбей (Taipei)</option>
                 <option value="newtaipei">Новий Тайбей (New Taipei)</option>
             </select>
 
-            <button onclick="loadBikeData()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded text-sm font-semibold transition shadow-sm">
+            <button onclick="loadBikeData()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded text-sm font-semibold transition shadow-sm">
                 Оновити
             </button>
         </div>
@@ -40,7 +40,7 @@
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        // Ініціалізація мапи (координати Таоюаня)
+        // Центр мапи (Таоюань)
         const map = L.map('map').setView([24.9537, 121.2257], 14);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -50,18 +50,17 @@
 
         let markersLayer = L.layerGroup().addTo(map);
 
-        // Прямі URL відкритих API без ключів
+        // Посилання з обходом CORS для GitHub Pages
         const apiEndpoints = {
-            taoyuan: "https://data.tycg.gov.tw/api/v1/rest/datastore/3833d826-801e-49f2-a10c-5d8619f4cb1d?format=json&limit=2000",
+            taoyuan: "https://api.allorigins.win/raw?url=" + encodeURIComponent("https://data.tycg.gov.tw/api/v1/rest/datastore/3833d826-801e-49f2-a10c-5d8619f4cb1d?format=json&limit=2000"),
             taipei: "https://tcgbusfs.blob.core.windows.net/dotapp/youbike/v2/youbike_immediate.json",
-            newtaipei: "https://data.ntpc.gov.tw/api/datasets/01077226-5124-4ed3-8dd6-581023a0731e/json?page=0&size=2000"
+            newtaipei: "https://api.allorigins.win/raw?url=" + encodeURIComponent("https://data.ntpc.gov.tw/api/datasets/01077226-5124-4ed3-8dd6-581023a0731e/json?page=0&size=2000")
         };
 
         async function loadBikeData() {
             const city = document.getElementById('citySelect').value;
             const url = apiEndpoints[city];
 
-            // Очищення старих маркерів
             markersLayer.clearLayers();
 
             try {
@@ -70,7 +69,6 @@
                 
                 const json = await response.json();
                 
-                // Нормалізація даних (оскільки структура JSON у різних міст може трохи відрізнятися)
                 let rawList = [];
                 if (city === 'taoyuan') {
                     rawList = json.result ? json.result.records : [];
@@ -86,7 +84,6 @@
                 let bounds = [];
 
                 rawList.forEach(station => {
-                    // Зчитування координат і кількості байків
                     const lat = parseFloat(station.lat || station.latitude);
                     const lng = parseFloat(station.lng || station.longitude);
                     const name = (station.sna || '').replace('YouBike2.0_', '');
@@ -97,7 +94,6 @@
 
                     bounds.push([lat, lng]);
 
-                    // Зелений маркер якщо є байки, червоний якщо 0
                     const badgeBg = bikes > 0 ? 'bg-emerald-600' : 'bg-rose-600';
                     
                     const customIcon = L.divIcon({
@@ -123,18 +119,16 @@
                     markersLayer.addLayer(marker);
                 });
 
-                // Автоматично масштабуємо мапу під нові маркери
                 if (bounds.length > 0) {
                     map.fitBounds(bounds, { padding: [40, 40] });
                 }
 
             } catch (error) {
                 console.error("Помилка завантаження:", error);
-                alert("Не вдалося завантажити дані. Перевірте підключення.");
+                alert("Не вдалося завантажити дані.");
             }
         }
 
-        // Автоматично завантажуємо Таоюань при відкритті сторінки
         window.addEventListener('DOMContentLoaded', loadBikeData);
     </script>
 </body>
