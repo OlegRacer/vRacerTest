@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YouBike 2.0 Direct Radar</title>
+    <title>YouBike 2.0 Nearby Radar</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Leaflet CSS -->
@@ -15,15 +15,26 @@
 <body class="bg-gray-100 font-sans">
 
     <!-- Панель керування -->
-    <header class="bg-white shadow-md p-3 flex items-center justify-between">
-        <div class="flex items-center space-x-2">
-            <span class="text-2xl">🚲</span>
-            <h1 class="font-bold text-lg text-gray-800">YouBike 2.0</h1>
+    <header class="bg-white shadow-md p-2 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center space-x-1">
+            <span class="text-xl">🚲</span>
+            <h1 class="font-bold text-base text-gray-800">YouBike 2.0</h1>
         </div>
 
-        <button onclick="loadBikeData()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded text-sm font-semibold transition shadow-sm">
-            Оновити
-        </button>
+        <div class="flex items-center gap-2">
+            <!-- Вибір радіуса -->
+            <select id="radiusSelect" onchange="filterAndRenderStations()" class="border rounded px-2 py-1 bg-white text-xs font-semibold focus:outline-blue-500">
+                <option value="1">Радіус: 1 км</option>
+                <option value="0.5">Радіус: 500 м</option>
+                <option value="2">Радіус: 2 км</option>
+                <option value="all">Усі станції</option>
+            </select>
+
+            <!-- Кнопка GPS -->
+            <button onclick="getUserLocation()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-bold transition shadow-sm flex items-center gap-1">
+                🎯 GPS
+            </button>
+        </div>
     </header>
 
     <!-- Мапа -->
@@ -32,8 +43,8 @@
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        // Початкові координати (Тайбей / Північний Тайвань)
-        const map = L.map('map').setView([25.0330, 121.5654], 13);
+        // Ініціалізація мапи за замовчуванням (Тайбей / Північний Тайвань)
+        const map = L.map('map').setView([25.0330, 121.5654], 14);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
@@ -41,73 +52,163 @@
         }).addTo(map);
 
         let markersLayer = L.layerGroup().addTo(map);
+        let userMarker = null;
+        let userCircle = null;
+        let userLat = null;
+        let userLng = null;
+        let allStationsData = []; // Кеш усіх завантажених станцій
 
-        // Офіційний прямий Azure CDN URL для YouBike 2.0 (працює без CORS-помилок)
         const directApiUrl = "https://tcgbusfs.blob.core.windows.net/dotapp/youbike/v2/youbike_immediate.json";
 
-        async function loadBikeData() {
-            markersLayer.clearLayers();
+        // Формула Haversine для розрахунку відстані між двома точками в км
+        function getDistanceKm(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Радіус Землі в км
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = 
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
 
+        // Завантаження даних з API
+        async function fetchBikeData() {
             try {
                 const response = await fetch(directApiUrl);
-                if (!response.ok) throw new Error("Помилка завантаження API");
-                
-                const stations = await response.json();
-
-                if (!Array.isArray(stations) || stations.length === 0) {
-                    alert("Дані порожні або недоступні.");
-                    return;
-                }
-
-                let bounds = [];
-
-                stations.forEach(station => {
-                    const lat = parseFloat(station.latitude || station.lat);
-                    const lng = parseFloat(station.longitude || station.lng);
-                    const name = (station.sna || '').replace('YouBike2.0_', '');
-                    const bikes = parseInt(station.available_rent_bikes || station.sbi || 0, 10);
-                    const emptyDocks = parseInt(station.available_return_bikes || station.bemp || 0, 10);
-
-                    if (isNaN(lat) || isNaN(lng)) return;
-
-                    bounds.push([lat, lng]);
-
-                    const badgeBg = bikes > 0 ? 'bg-emerald-600' : 'bg-rose-600';
-                    
-                    const customIcon = L.divIcon({
-                        className: 'custom-div-icon',
-                        html: `<div class="${badgeBg} text-white font-bold text-xs rounded-full h-7 w-7 flex items-center justify-center border-2 border-white shadow-lg">${bikes}</div>`,
-                        iconSize: [28, 28],
-                        iconAnchor: [14, 14]
-                    });
-
-                    const marker = L.marker([lat, lng], { icon: customIcon });
-
-                    marker.bindPopup(`
-                        <div class="p-1">
-                            <h3 class="font-bold text-sm text-gray-800">${name}</h3>
-                            <div class="mt-2 text-xs space-y-1">
-                                <p class="text-emerald-700 font-bold">🚲 Доступно велосипедів: ${bikes}</p>
-                                <p class="text-blue-600 font-semibold">🅿️ Вільних місць: ${emptyDocks}</p>
-                                <p class="text-gray-400">Всього стойок: ${bikes + emptyDocks}</p>
-                            </div>
-                        </div>
-                    `);
-
-                    markersLayer.addLayer(marker);
-                });
-
-                if (bounds.length > 0) {
-                    map.fitBounds(bounds, { padding: [40, 40] });
-                }
-
+                if (!response.ok) throw new Error("Помилка API");
+                allStationsData = await response.json();
+                filterAndRenderStations();
             } catch (error) {
                 console.error("Помилка:", error);
                 alert("Не вдалося завантажити дані YouBike.");
             }
         }
 
-        window.addEventListener('DOMContentLoaded', loadBikeData);
+        // Отримання поточної геолокації користувача
+        function getUserLocation() {
+            if (!navigator.geolocation) {
+                alert("Геолокація не підтримується вашим браузером.");
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    userLat = position.coords.latitude;
+                    userLng = position.coords.longitude;
+
+                    // Оновлюємо маркер користувача на мапі
+                    if (userMarker) map.removeLayer(userMarker);
+                    if (userCircle) map.removeLayer(userCircle);
+
+                    // Синя точка геопозиції
+                    userMarker = L.circleMarker([userLat, userLng], {
+                        radius: 8,
+                        fillColor: "#3b82f6",
+                        color: "#ffffff",
+                        weight: 3,
+                        opacity: 1,
+                        fillOpacity: 1
+                    }).addTo(map).bindPopup("<b>Ви тут</b>").openPopup();
+
+                    // Центруємо мапу на користувача
+                    map.setView([userLat, userLng], 15);
+
+                    // Фільтруємо станції навколо
+                    filterAndRenderStations();
+                },
+                (error) => {
+                    alert("Не вдалося отримати дозвіл на GPS. Перевірте налаштування браузера.");
+                    console.error(error);
+                },
+                { enableHighAccuracy: true }
+            );
+        }
+
+        // Відображення станцій з урахуванням радіуса
+        function filterAndRenderStations() {
+            markersLayer.clearLayers();
+            if (userCircle) map.removeLayer(userCircle);
+
+            if (!allStationsData || allStationsData.length === 0) return;
+
+            const radiusValue = document.getElementById('radiusSelect').value;
+            const maxRadius = radiusValue === 'all' ? Infinity : parseFloat(radiusValue);
+
+            // Якщо є GPS і вибрано радіус, малюємо коло на мапі
+            if (userLat && userLng && maxRadius !== Infinity) {
+                userCircle = L.circle([userLat, userLng], {
+                    color: '#3b82f6',
+                    fillColor: '#3b82f6',
+                    fillOpacity: 0.1,
+                    radius: maxRadius * 1000
+                }).addTo(map);
+            }
+
+            let bounds = [];
+            let renderedCount = 0;
+
+            allStationsData.forEach(station => {
+                const lat = parseFloat(station.latitude || station.lat);
+                const lng = parseFloat(station.longitude || station.lng);
+
+                if (isNaN(lat) || isNaN(lng)) return;
+
+                // Якщо є локація користувача, розраховуємо відстань
+                let distance = null;
+                if (userLat && userLng) {
+                    distance = getDistanceKm(userLat, userLng, lat, lng);
+                    if (distance > maxRadius) return; // Пропускаємо станції поза радіусом
+                }
+
+                const name = (station.sna || '').replace('YouBike2.0_', '');
+                const bikes = parseInt(station.available_rent_bikes || station.sbi || 0, 10);
+                const emptyDocks = parseInt(station.available_return_bikes || station.bemp || 0, 10);
+
+                bounds.push([lat, lng]);
+                renderedCount++;
+
+                const badgeBg = bikes > 0 ? 'bg-emerald-600' : 'bg-rose-600';
+
+                const customIcon = L.divIcon({
+                    className: 'custom-div-icon',
+                    html: `<div class="${badgeBg} text-white font-bold text-xs rounded-full h-7 w-7 flex items-center justify-center border-2 border-white shadow-lg">${bikes}</div>`,
+                    iconSize: [28, 28],
+                    iconAnchor: [14, 14]
+                });
+
+                const marker = L.marker([lat, lng], { icon: customIcon });
+
+                const distText = distance !== null ? `<p class="text-blue-600 font-medium">📍 Відстань: ${(distance * 1000).toFixed(0)} м</p>` : '';
+
+                marker.bindPopup(`
+                    <div class="p-1">
+                        <h3 class="font-bold text-sm text-gray-800">${name}</h3>
+                        ${distText}
+                        <div class="mt-2 text-xs space-y-1">
+                            <p class="text-emerald-700 font-bold">🚲 Доступно велосипедів: ${bikes}</p>
+                            <p class="text-blue-600 font-semibold">🅿️ Вільних місць: ${emptyDocks}</p>
+                            <p class="text-gray-400">Всього стойок: ${bikes + emptyDocks}</p>
+                        </div>
+                    </div>
+                `);
+
+                markersLayer.addLayer(marker);
+            });
+
+            // Якщо є маркери і немає визначеної позиції, підганяємо зум
+            if (bounds.length > 0 && !userLat) {
+                map.fitBounds(bounds, { padding: [40, 40] });
+            }
+        }
+
+        // Запуск при завантаженні сторінки
+        window.addEventListener('DOMContentLoaded', () => {
+            fetchBikeData();
+            // Автоматично пропонуємо визначити GPS при відкритті
+            setTimeout(getUserLocation, 800);
+        });
     </script>
 </body>
 </html>
