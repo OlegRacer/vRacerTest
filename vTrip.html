@@ -273,7 +273,7 @@ input[type=text],input[type=password],select{flex:1;min-width:0;font:inherit;col
    • localStorage з префіксом 'ar_' (ключі API: cwaKey, tomtomKey, orsKey, cartoKey, googleApiKey; POI: poibrandsdb, poicustomcats)
    • IndexedDB 'vracer-map' v2: стор 'tiles' (ключ z_x_y), стор 'files' (mbtilesFile, routeFile, sqlWasmCache)
    Власні налаштування vTrip — ключі 'ar_vt_*' (щоб не псувати налаштування VRacer: 'ar_mapcfg' лише ЧИТАЄМО). */
-const BUILD='23.10.2026 20:22';
+const BUILD='23.10.2026 21:02';
 const $=id=>document.getElementById(id);
 function lg(k){try{const s=localStorage.getItem('ar_'+k);return s?JSON.parse(s):null;}catch(e){return null;}}
 function ls(k,v){try{localStorage.setItem('ar_'+k,JSON.stringify(v));}catch(e){}}
@@ -2141,7 +2141,8 @@ function busCity(lat,lon){ const l=YB_CITIES.map(x=>({c:x[0],d:haversineM(lat,lo
 function busAdd(arr,c){
   arr.forEach(s=>{ const p=s.StationPosition; if(!p||!isFinite(p.PositionLat)) return; const id=String(s.StationUID||s.StationID);
     const routes=[...new Set((s.Stops||[]).map(x=>trName(x.RouteName)).filter(Boolean))];
-    BUS.st[id]={id:id,sid:String(s.StationID||''),city:c,name:trName(s.StationName),lat:+p.PositionLat,lon:+p.PositionLon,routes:routes}; });
+    const stops=(s.Stops||[]).map(x=>({uid:x.StopUID||'',zh:trZh(x.RouteName)||trName(x.RouteName)})).filter(x=>x.zh);
+    BUS.st[id]={id:id,sid:String(s.StationID||''),city:c,name:trName(s.StationName),lat:+p.PositionLat,lon:+p.PositionLon,routes:routes,stops:stops}; });
 }
 async function busLoad(){
   if(!CFG.bus || map.getZoom()<15) { busRender(); return; }
@@ -2156,10 +2157,10 @@ async function busLoad(){
       }catch(e){
         if(e.status===429) throw e;
         dbgEv('Автобуси: фільтр за відстанню не спрацював ('+e.message+') → усі станції міста');
-        const rec=await idbGet('busst_'+c);
+        const rec=await idbGet('busst2_'+c);
         if(rec&&rec.list&&Date.now()-rec.t<7*864e5){ busAdd(rec.list,c); }
-        else{ const j=await tdxGet('basic/v2/Bus/Station/City/'+c+'?$format=JSON'); const arr=ybArr(j).map(s=>({StationUID:s.StationUID,StationID:s.StationID,StationName:s.StationName,StationPosition:s.StationPosition,Stops:(s.Stops||[]).map(x=>({RouteName:x.RouteName}))}));
-          busAdd(arr,c); idbSet('busst_'+c,{t:Date.now(),list:arr}); dbgEv('Автобуси '+c+': станцій '+arr.length); }
+        else{ const j=await tdxGet('basic/v2/Bus/Station/City/'+c+'?$format=JSON'); const arr=ybArr(j).map(s=>({StationUID:s.StationUID,StationID:s.StationID,StationName:s.StationName,StationPosition:s.StationPosition,Stops:(s.Stops||[]).map(x=>({RouteName:x.RouteName,StopUID:x.StopUID}))}));
+          busAdd(arr,c); idbSet('busst2_'+c,{t:Date.now(),list:arr}); dbgEv('Автобуси '+c+': станцій '+arr.length); }
         BUS.fullCity[c]=1;
       }
     }
@@ -2185,8 +2186,21 @@ function busPopup(s){
   busEta(s).then(h=>{ box.innerHTML=h; },e=>{ box.innerHTML='<span class="err">Прибуття: '+trEsc(e.message)+'</span>'+(s.routes.length?'<div>Маршрути: '+trEsc(s.routes.slice(0,12).join(', '))+'</div>':''); });
 }
 async function busEta(s){
-  const base='basic/v2/Bus/EstimatedTimeOfArrival/City/'+s.city+'/PassThrough/Station/'+encodeURIComponent(s.sid)+'?$format=JSON';
-  const arr=ybArr(await tdxGet(base));
+  let arr=[];
+  try{ arr=ybArr(await tdxGet('basic/v2/Bus/EstimatedTimeOfArrival/City/'+s.city+'/PassThrough/Station/'+encodeURIComponent(s.sid)+'?$format=JSON')); }
+  catch(e){
+    if(e.status===429) throw e;
+    dbgEv('Автобуси: прибуття за станцією не спрацювало ('+e.message+') → по маршрутах');
+    // запасний шлях: по кожному маршруту окремо з фільтром за нашою зупинкою (StopUID)
+    const byRoute={}; (s.stops||[]).forEach(x=>{ (byRoute[x.zh]=byRoute[x.zh]||[]).push(x.uid); });
+    const names=Object.keys(byRoute).slice(0,8); let last=null;
+    for(const r of names){
+      const uids=byRoute[r].filter(Boolean); const flt=uids.length?'&$filter='+encodeURIComponent(uids.map(u=>"StopUID eq '"+u+"'").join(' or ')):'';
+      try{ arr=arr.concat(ybArr(await tdxGet('basic/v2/Bus/EstimatedTimeOfArrival/City/'+s.city+'/'+encodeURIComponent(r)+'?$format=JSON'+flt))); }catch(x){ last=x; if(x.status===429) break; }
+    }
+    if(!arr.length && last) throw last;
+    if(!arr.length && !names.length) throw e;
+  }
   const rows=arr.map(x=>({route:trName(x.RouteName),to:trName(x.DestinationStopName)||'',dir:x.Direction,sec:x.EstimateTime!=null?+x.EstimateTime:null,st:x.StopStatus}))
     .sort((a,b)=>(a.sec==null)-(b.sec==null)||a.sec-b.sec);
   if(!rows.length) return 'Прибуттів немає.'+(s.routes.length?'<div>Маршрути: '+trEsc(s.routes.slice(0,12).join(', '))+'</div>':'');
