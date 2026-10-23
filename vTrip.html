@@ -273,7 +273,7 @@ input[type=text],input[type=password],select{flex:1;min-width:0;font:inherit;col
    • localStorage з префіксом 'ar_' (ключі API: cwaKey, tomtomKey, orsKey, cartoKey, googleApiKey; POI: poibrandsdb, poicustomcats)
    • IndexedDB 'vracer-map' v2: стор 'tiles' (ключ z_x_y), стор 'files' (mbtilesFile, routeFile, sqlWasmCache)
    Власні налаштування vTrip — ключі 'ar_vt_*' (щоб не псувати налаштування VRacer: 'ar_mapcfg' лише ЧИТАЄМО). */
-const BUILD='23.10.2026 21:02';
+const BUILD='23.10.2026 22:37';
 const $=id=>document.getElementById(id);
 function lg(k){try{const s=localStorage.getItem('ar_'+k);return s?JSON.parse(s):null;}catch(e){return null;}}
 function ls(k,v){try{localStorage.setItem('ar_'+k,JSON.stringify(v));}catch(e){}}
@@ -2012,6 +2012,9 @@ $('ybProbe').onclick=async()=>{
 const TR={st:[],byId:{},layer:L.layerGroup().addTo(map),from:null,to:null,delay:{},delayAt:0};
 function trEsc(t){ const d=document.createElement('div'); d.textContent=t==null?'':t; return d.innerHTML; }
 function trName(o){ if(!o) return ''; if(typeof o==='string') return o; return o.En||o.Zh_tw||''; }   // англійська, а якщо її нема — китайська
+function tdxErr(e){   // коротке повідомлення: для 429 — просто «ліміт перевищено»
+  if(e&&e.status===429){ const w=Math.max(1,Math.ceil((TDX_BLOCK_UNTIL-Date.now())/1000)); return '⏳ Ліміт запитів TDX перевищено'+(w>1&&w<900?' — спробуйте через '+(w>90?Math.ceil(w/60)+' хв':w+' с'):''); }
+  return (e&&e.message)||'помилка'; }
 function trZh(o){ return (o&&o.Zh_tw)||''; }
 function trNow(){
   const d=new Date(), tz='Asia/Taipei';
@@ -2034,7 +2037,7 @@ async function trLoadStations(){
       }
       TR.byId={}; TR.st.forEach(s=>{ TR.byId[s.id]=s; });
       $('trList').innerHTML=TR.st.map(s=>'<option value="'+trEsc(s.name)+'">'+(s.zh&&s.zh!==s.name?'<option value="'+trEsc(s.zh)+'">':'')).join('');
-    }catch(e){ $('trOut').innerHTML='<span class="err">Станції TRA: '+trEsc(e.message)+'</span>'; }
+    }catch(e){ $('trOut').innerHTML='<span class="err">Станції TRA: '+trEsc(tdxErr(e))+'</span>'; }
     finally{ TR.loading=null; }
   })());
 }
@@ -2073,7 +2076,7 @@ function trPopup(s,full){
   mk('🏁 Велосипедом сюди',()=>{ map.closePopup(); setPoint('fin',{lat:s.lat,lng:s.lon}); });
   d.append(t,box,bt); L.popup({closeButton:false,offset:[0,-8],maxWidth:300}).setLatLng([s.lat,s.lon]).setContent(d).openOn(map);
   if(full){ const h=document.createElement('div'); h.className='note'; h.textContent='Весь розклад до кінця дня'; d.insertBefore(h,box); }
-  trBoard(s,full).then(h=>{ box.innerHTML=h; },e=>{ box.innerHTML='<span class="err">Табло: '+trEsc(e.message)+'</span>'; });
+  trBoard(s,full).then(h=>{ box.innerHTML=h; },e=>{ box.innerHTML='<span class="err">'+(e.status===429?'':'Табло: ')+trEsc(tdxErr(e))+'</span>'; });
 }
 async function trBoard(s,full){
   // Основа — повний розклад станції на сьогодні (LiveBoard у TDX неповний: це лише «вікно» найближчих поїздів, інколи порожнє для малих станцій).
@@ -2115,7 +2118,7 @@ async function trFind(){
     out.innerHTML=list.length?('<b>'+trEsc(a.name)+' → '+trEsc(b.name)+'</b>'+list.map(r=>{ let dur=trMin(r.arr)-trMin(r.dep); if(dur<0) dur+=1440;
       return '<div class="trrow"><b>'+r.dep+'</b><span>→ '+r.arr+' · '+Math.floor(dur/60)+'г'+String(dur%60).padStart(2,'0')+' · '+trEsc(r.type)+' №'+trEsc(r.no)+'</span>'+(r.delay>0?'<span class="late">+'+r.delay+' хв</span>':'')+'</div>'; }).join('')):'Сьогодні більше поїздів на цьому напрямку немає.';
     dbgEv('TRA: '+a.name+' → '+b.name+': '+list.length+' поїздів');
-  }catch(e){ out.innerHTML='<span class="err">Розклад: '+trEsc(e.message)+'</span>'; }
+  }catch(e){ out.innerHTML='<span class="err">'+(e.status===429?'':'Розклад: ')+trEsc(tdxErr(e))+'</span>'; }
   $('trFind').disabled=false;
 }
 async function trSet(on){
@@ -2164,7 +2167,7 @@ async function busLoad(){
         BUS.fullCity[c]=1;
       }
     }
-  }catch(e){ BUS.err=e.message; $('busInfo').innerHTML='<span class="err">Автобуси: '+trEsc(e.message)+'</span>'; dbgEv('Автобуси: '+e.message); }
+  }catch(e){ BUS.err=e.message; $('busInfo').innerHTML='<span class="err">'+(e.status===429?'':'Автобуси: ')+trEsc(tdxErr(e))+'</span>'; dbgEv('Автобуси: '+e.message); }
   busRender();
 }
 function busRender(){
@@ -2183,7 +2186,7 @@ function busPopup(s){
   const box=document.createElement('div'); box.className='note'; box.style.margin='4px 0'; box.textContent='Завантажую прибуття…';
   const bt=document.createElement('div'); bt.className='btns'; const b=document.createElement('button'); b.className='btn'; b.textContent='🏁 Велосипедом сюди'; b.onclick=()=>{ map.closePopup(); setPoint('fin',{lat:s.lat,lng:s.lon}); }; bt.appendChild(b);
   d.append(t,box,bt); L.popup({closeButton:false,offset:[0,-8],maxWidth:300}).setLatLng([s.lat,s.lon]).setContent(d).openOn(map);
-  busEta(s).then(h=>{ box.innerHTML=h; },e=>{ box.innerHTML='<span class="err">Прибуття: '+trEsc(e.message)+'</span>'+(s.routes.length?'<div>Маршрути: '+trEsc(s.routes.slice(0,12).join(', '))+'</div>':''); });
+  busEta(s).then(h=>{ box.innerHTML=h; },e=>{ box.innerHTML='<span class="err">'+(e.status===429?'':'Прибуття: ')+trEsc(tdxErr(e))+'</span>'+(s.routes.length?'<div>Маршрути: '+trEsc(s.routes.slice(0,12).join(', '))+'</div>':''); });
 }
 async function busEta(s){
   let arr=[];
