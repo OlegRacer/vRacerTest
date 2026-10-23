@@ -267,7 +267,7 @@ input[type=text],input[type=password],select{flex:1;min-width:0;font:inherit;col
    • localStorage з префіксом 'ar_' (ключі API: cwaKey, tomtomKey, orsKey, cartoKey, googleApiKey; POI: poibrandsdb, poicustomcats)
    • IndexedDB 'vracer-map' v2: стор 'tiles' (ключ z_x_y), стор 'files' (mbtilesFile, routeFile, sqlWasmCache)
    Власні налаштування vTrip — ключі 'ar_vt_*' (щоб не псувати налаштування VRacer: 'ar_mapcfg' лише ЧИТАЄМО). */
-const BUILD='23.10.2026 15:14';
+const BUILD='23.10.2026 15:40';
 const $=id=>document.getElementById(id);
 function lg(k){try{const s=localStorage.getItem('ar_'+k);return s?JSON.parse(s):null;}catch(e){return null;}}
 function ls(k,v){try{localStorage.setItem('ar_'+k,JSON.stringify(v));}catch(e){}}
@@ -1996,7 +1996,8 @@ $('ybProbe').onclick=async()=>{
    Шляхи TDX: спершу v3, при невдачі v2 (формат відповіді читаємо терпимо). Усе пише в журнал. */
 const TR={st:[],byId:{},layer:L.layerGroup().addTo(map),from:null,to:null,delay:{},delayAt:0};
 function trEsc(t){ const d=document.createElement('div'); d.textContent=t==null?'':t; return d.innerHTML; }
-function trName(o){ if(!o) return ''; if(typeof o==='string') return o; return o.Zh_tw||o.En||''; }
+function trName(o){ if(!o) return ''; if(typeof o==='string') return o; return o.En||o.Zh_tw||''; }   // англійська, а якщо її нема — китайська
+function trZh(o){ return (o&&o.Zh_tw)||''; }
 function trNow(){
   const d=new Date(), tz='Asia/Taipei';
   return {date:d.toLocaleDateString('sv-SE',{timeZone:tz}), hm:d.toLocaleTimeString('en-GB',{timeZone:tz,hour12:false,hour:'2-digit',minute:'2-digit'})};
@@ -2008,23 +2009,24 @@ async function trLoadStations(){
   if(TR.loading) return TR.loading;
   return (TR.loading=(async()=>{
     try{
-      const rec=await idbGet('trastations');
+      const rec=await idbGet('trastations2');
       if(rec && rec.list && rec.list.length && Date.now()-rec.t<30*864e5){ TR.st=rec.list; }
       else{
         const j=await trTry(['basic/v3/Rail/TRA/Station?$format=JSON','basic/v2/Rail/TRA/Station?$format=JSON']);
-        const arr=ybArr(j); TR.st=arr.filter(s=>s.StationPosition&&isFinite(s.StationPosition.PositionLat)).map(s=>({id:String(s.StationID),name:trName(s.StationName),lat:+s.StationPosition.PositionLat,lon:+s.StationPosition.PositionLon}));
-        if(TR.st.length) idbSet('trastations',{t:Date.now(),list:TR.st});
+        const arr=ybArr(j); TR.st=arr.filter(s=>s.StationPosition&&isFinite(s.StationPosition.PositionLat)).map(s=>({id:String(s.StationID),name:trName(s.StationName),zh:trZh(s.StationName),lat:+s.StationPosition.PositionLat,lon:+s.StationPosition.PositionLon}));
+        if(TR.st.length) idbSet('trastations2',{t:Date.now(),list:TR.st});
         dbgEv('TRA: станцій '+TR.st.length);
       }
       TR.byId={}; TR.st.forEach(s=>{ TR.byId[s.id]=s; });
-      $('trList').innerHTML=TR.st.map(s=>'<option value="'+trEsc(s.name)+'">').join('');
+      $('trList').innerHTML=TR.st.map(s=>'<option value="'+trEsc(s.name)+'">'+(s.zh&&s.zh!==s.name?'<option value="'+trEsc(s.zh)+'">':'')).join('');
     }catch(e){ $('trOut').innerHTML='<span class="err">Станції TRA: '+trEsc(e.message)+'</span>'; }
     finally{ TR.loading=null; }
   })());
 }
 function trFindSt(txt){
-  txt=String(txt||'').trim().replace(/站$/,''); if(!txt) return null;
-  return TR.st.find(s=>s.name===txt)||TR.st.find(s=>s.name.startsWith(txt))||null;
+  txt=String(txt||'').trim().replace(/站$/,'').toLowerCase(); if(!txt) return null;
+  const nm=s=>[s.name.toLowerCase(),(s.zh||'').toLowerCase()];
+  return TR.st.find(s=>nm(s).includes(txt))||TR.st.find(s=>nm(s).some(n=>n.startsWith(txt)))||null;
 }
 function trNearest(lat,lon){ let b=null,bd=1e12; TR.st.forEach(s=>{ const d=haversineM(lat,lon,s.lat,s.lon); if(d<bd){ bd=d; b=s; } }); return b?{s:b,d:bd}:null; }
 function trRender(){
