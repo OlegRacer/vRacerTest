@@ -258,7 +258,7 @@ input[type=text],input[type=password],select{flex:1;min-width:0;font:inherit;col
    • localStorage з префіксом 'ar_' (ключі API: cwaKey, tomtomKey, orsKey, cartoKey, googleApiKey; POI: poibrandsdb, poicustomcats)
    • IndexedDB 'vracer-map' v2: стор 'tiles' (ключ z_x_y), стор 'files' (mbtilesFile, routeFile, sqlWasmCache)
    Власні налаштування vTrip — ключі 'ar_vt_*' (щоб не псувати налаштування VRacer: 'ar_mapcfg' лише ЧИТАЄМО). */
-const BUILD='23.10.2026 11:11';
+const BUILD='23.10.2026 11:17';
 const $=id=>document.getElementById(id);
 function lg(k){try{const s=localStorage.getItem('ar_'+k);return s?JSON.parse(s):null;}catch(e){return null;}}
 function ls(k,v){try{localStorage.setItem('ar_'+k,JSON.stringify(v));}catch(e){}}
@@ -1874,10 +1874,10 @@ async function ybLoadAvail(c){
     if(!arr) throw new Error(last||'немає даних');
     arr.forEach(a=>{ const d=a.AvailableRentBikesDetail||{}; const v={rent:ybNum(a.AvailableRentBikes,(d.GeneralBikes!=null||d.ElectricBikes!=null)?(+d.GeneralBikes||0)+(+d.ElectricBikes||0):null,a.AvailableBikes,a.available_rent_bikes),ret:ybNum(a.AvailableReturnBikes,a.AvailableSpaces,a.available_return_bikes),ok:a.ServiceStatus,t:a.UpdateTime}; if(a.StationUID!=null) YB.av[a.StationUID]=v; if(a.StationID!=null) YB.av['id:'+a.StationID]=v; });
     const sts=YB.st[c]||[]; let m=0; sts.forEach(x=>{ if(YB.av[x.id]||YB.av['id:'+x.sid]) m++; });
-    let up=0,withB=0; arr.forEach(a=>{ if(+a.ServiceStatus===1){ up++; if((+a.AvailableRentBikes||0)>0) withB++; } });
-    YB.stat[c]={up:up,withB:withB,n:arr.length,match:m,total:sts.length,path:YB.avForm+1,sample:arr[0]?Object.keys(arr[0]).join(','):''};
+    let up=0,withB=0,withD=0; const stc={}; arr.forEach(a=>{ stc[a.ServiceStatus]=(stc[a.ServiceStatus]||0)+1; if(+a.ServiceStatus===1) up++; if((+a.AvailableRentBikes||0)>0) withB++; if((+a.AvailableRentBikes||0)>0||(+a.AvailableReturnBikes||0)>0) withD++; });
+    YB.stat[c]={up:up,withB:withB,withD:withD,stc:stc,n:arr.length,match:m,total:sts.length,path:YB.avForm+1,sample:arr[0]?Object.keys(arr[0]).join(','):''};
     if(!YB.sampled){ YB.sampled=1; try{ dbgEv('YouBike зразок наявності: '+JSON.stringify(arr[0]).slice(0,400)); dbgEv('YouBike зразок станції: '+JSON.stringify((YB.st[c]||[])[0])); }catch(e){} }
-    YB.avAt[c]=Date.now(); dbgEv('YouBike наявність '+c+': '+arr.length+' записів, збіг зі станціями '+m+'/'+sts.length+' (шлях №'+(YB.avForm+1)+'); працюють '+up+', з велосипедами '+withB);
+    YB.avAt[c]=Date.now(); dbgEv('YouBike наявність '+c+': '+arr.length+' записів, збіг зі станціями '+m+'/'+sts.length+' (шлях №'+(YB.avForm+1)+'); статуси '+JSON.stringify(stc)+', з велосипедами '+withB+', з будь-якими даними '+withD);
   }catch(e){ YB.err[c]=e.message; dbgEv('YouBike наявність '+c+': '+e.message); YB.avAt[c]=Date.now()-(e.status===429?0:100000); }   // повторимо за ~15 с
   finally{ delete YB.loading['a'+c]; }
 }
@@ -1889,7 +1889,7 @@ function ybRender(){
   Object.keys(YB.st).forEach(c=>YB.st[c].forEach(s=>{ if(b.contains([s.lat,s.lon])) list.push(s); }));
   list.sort((p,q)=>((p.lat-cen.lat)**2+(p.lon-cen.lng)**2)-((q.lat-cen.lat)**2+(q.lon-cen.lng)**2));
   list.slice(0,220).forEach(s=>{
-    const a=YB.av[s.id]||YB.av['id:'+s.sid], down=!!(a && a.ok!=null && +a.ok!==1), n=a?(mode==='rent'?a.rent:a.ret):null;
+    const a=YB.av[s.id]||YB.av['id:'+s.sid], down=!!(a && a.ok!=null && +a.ok!==1 && !(a.rent>0) && !(a.ret>0)), n=a?(mode==='rent'?a.rent:a.ret):null;
     const m=L.marker([s.lat,s.lon],{icon:L.divIcon({className:'',html:'<div class="yb" style="background:'+(down?'#6b7684;opacity:.65':ybColor(n))+'">'+(down?'✕':(n==null?'?':n))+'</div>',iconSize:[30,30],iconAnchor:[15,15]})});
     m.on('click',()=>{
       const d=document.createElement('div'), t=document.createElement('b'); t.textContent=s.name||'YouBike';
@@ -1909,7 +1909,7 @@ async function ybRefresh(){
   if(!cs.length){ ybRender(); $('ybInfo').textContent='Поблизу немає міст із YouBike в таблиці.'; return; }
   try{ await Promise.all(cs.map(ybLoadStations)); ybRender(); await Promise.all(cs.map(c=>ybLoadAvail(c).then(ybRender))); ybRender(); }   // малюємо одразу, щойно прийшло місто, не чекаючи решти
   catch(e){ dbgEv('YouBike: '+e.message); }
-  $('ybInfo').innerHTML='Міста: '+cs.map(c=>{ const t=YB.stat[c], e=YB.err[c]; return c+': станцій '+((YB.st[c]||[]).length)+(t?', працюють '+t.up+' з '+t.n+', з велосипедами '+t.withB:(e?', <span class="err">наявність ❌ '+e+'</span>':', наявність…')); }).join(' · ')+' · '+new Date().toLocaleTimeString('uk-UA',{hour:'2-digit',minute:'2-digit'});
+  $('ybInfo').innerHTML='Міста: '+cs.map(c=>{ const t=YB.stat[c], e=YB.err[c]; return c+': станцій '+((YB.st[c]||[]).length)+(t?', статуси '+JSON.stringify(t.stc)+', з велосипедами '+t.withB+', з даними '+t.withD+' з '+t.n:(e?', <span class="err">наявність ❌ '+e+'</span>':', наявність…')); }).join(' · ')+' · '+new Date().toLocaleTimeString('uk-UA',{hour:'2-digit',minute:'2-digit'});
 }
 function ybModesRender(){
   const box=$('ybModes'); box.innerHTML='';
