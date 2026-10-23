@@ -1,0 +1,1934 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f1216">
+<title>vTrip — велосипедна навігація</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<style>
+/* vTrip — вертикальний інтерфейс. Тема день/ніч = body.day / body.night */
+:root{
+  --bg:#f4f5f7; --fg:#14171c; --mut:#5d6877; --card:rgba(255,255,255,.94); --line:rgba(0,0,0,.12);
+  --acc:#0a7cff; --accfg:#fff; --ok:#1f9d55; --warn:#e8590c; --bad:#d6293e; --sh:0 6px 22px rgba(0,0,0,.25);
+  --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px);
+}
+body.night{ --bg:#0f1216; --fg:#e9edf2; --mut:#98a4b3; --card:rgba(21,25,31,.94); --line:rgba(255,255,255,.14); --acc:#4da3ff; --accfg:#06121f; --sh:0 6px 22px rgba(0,0,0,.6); }
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+/* 22.10.2026: сторінка вища за екран на 2 px, щоб браузер (Bluefy) бачив «верх сторінки» і реагував на свайп вниз його власним меню
+   (повноекран / оновити). Свайп вниз ДОЗВОЛЕНО лише за нижню панель (touch-action:pan-y); на карті й кнопках він іде в карту. */
+html{height:100%;overflow-x:hidden;overflow-y:auto;overscroll-behavior-x:none;background:var(--bg)}
+body{margin:0;min-height:calc(100dvh + 2px);background:var(--bg);color:var(--fg);
+  font:15px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-user-select:none;user-select:none}
+#hud,.col,#fcbar,#toasts{touch-action:none}
+#hud>*{touch-action:none}
+#map{position:fixed;inset:0;background:#0b0e12;touch-action:none}
+body.day #map{background:#e9eaec}
+/* колір карти: день — Carto інвертуємо у світлу, NLSC як є; ніч — навпаки (як у VRacer) */
+body.night .nlsc-layer{filter:invert(1) hue-rotate(180deg) saturate(0)}
+body.day .carto-layer{filter:invert(1) hue-rotate(180deg)}
+.leaflet-pane.wxpane{pointer-events:none}
+canvas.wxcv{position:absolute;left:0;top:0;pointer-events:none}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+.chip{background:var(--card);border-radius:14px;box-shadow:var(--sh);padding:6px 11px;display:flex;align-items:baseline;gap:5px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.chip b{font-size:22px;font-variant-numeric:tabular-nums}
+.chip small{color:var(--mut);font-size:12px}
+#hud{position:fixed;left:10px;right:10px;top:calc(var(--sat) + 10px);display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:8px;z-index:1000;pointer-events:none}
+#hud>*{pointer-events:auto}
+#cmp b{font-size:18px}
+#cmpArrow{display:inline-block;transition:transform .15s linear;color:var(--acc)}
+/* банер повороту */
+#turn{order:3;flex:1 1 100%;min-width:0;background:var(--acc);color:var(--accfg);border-radius:16px;box-shadow:var(--sh);padding:8px 12px;display:flex;gap:10px;align-items:center}
+#turn[hidden]{display:none}
+#turn .ar{font-size:34px;line-height:1;width:40px;text-align:center}
+#turn .tx{min-width:0;flex:1}
+#turn .d{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+#turn .n{font-size:13px;opacity:.92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#turn .off{background:#fff;color:var(--bad);border-radius:10px;padding:7px 10px;font-size:13px;font-weight:700;flex:0 0 auto}
+#turn.offr{background:var(--bad);color:#fff}
+#rem{position:fixed;left:10px;top:calc(var(--sat) + 88px);z-index:1000}
+#rem[hidden]{display:none}
+.col{position:fixed;display:flex;flex-direction:column;gap:10px;z-index:1000}
+#rcol{right:10px;top:calc(var(--sat) + 88px)}
+body.navon #rcol{top:calc(var(--sat) + 150px)}
+body.navon #rem{top:calc(var(--sat) + 150px)}
+body.navon #toasts{top:calc(var(--sat) + 210px)}
+#lcol{left:10px;bottom:calc(var(--sab) + 92px)}
+.fab{width:52px;height:52px;border-radius:50%;background:var(--card);box-shadow:var(--sh);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:21px;line-height:1;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.fab small{font-size:10px;color:var(--mut);margin-top:2px;max-width:48px;overflow:hidden;white-space:nowrap}
+.fab.on{background:var(--acc);color:var(--accfg)}
+.fab.on small{color:var(--accfg);opacity:.9}
+.fab.sm{width:44px;height:44px;font-size:22px}
+#dock{position:fixed;left:10px;right:10px;bottom:calc(var(--sab) + 10px);z-index:2600;display:flex;gap:6px;background:var(--card);border-radius:20px;box-shadow:var(--sh);padding:6px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+#dock{padding-top:17px;touch-action:pan-y}
+#dockGrip{position:absolute;left:50%;top:6px;width:44px;height:5px;margin-left:-22px;border-radius:3px;background:var(--mut);opacity:.6;pointer-events:none}
+#dock button{touch-action:pan-y;flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;padding:6px 2px;border-radius:14px;font-size:11px;color:var(--mut)}
+#dock button span{font-size:22px;line-height:1.1}
+#dock button.on{background:var(--acc);color:var(--accfg)}
+/* панель прогнозу */
+#fcbar{position:fixed;left:10px;right:10px;bottom:calc(var(--sab) + 84px);z-index:1000;background:var(--card);border-radius:16px;box-shadow:var(--sh);padding:8px 12px;display:flex;align-items:center;gap:10px}
+#fcbar[hidden]{display:none}
+#fcbar b{font-variant-numeric:tabular-nums;min-width:48px}
+#fcbar input[type=range]{flex:1;accent-color:var(--acc)}
+/* тости */
+#toasts{position:fixed;left:10px;right:10px;top:calc(var(--sat) + 150px);z-index:3000;display:flex;flex-direction:column;gap:6px;pointer-events:none;align-items:center}
+.toast{background:rgba(20,24,30,.92);color:#fff;border-radius:12px;padding:8px 12px;font-size:14px;box-shadow:var(--sh);max-width:100%;animation:tin .18s ease-out;pointer-events:auto}
+.toast.wx{font-size:16px;font-weight:600;background:rgba(10,60,120,.94)}
+@keyframes tin{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+/* меню довгого тапу */
+#ptmenu{position:fixed;z-index:3500;background:var(--card);border-radius:14px;box-shadow:var(--sh);padding:6px;display:flex;flex-direction:column;min-width:170px}
+#ptmenu[hidden]{display:none}
+#ptmenu button{padding:10px 12px;text-align:left;border-radius:9px;font-size:15px}
+#ptmenu button:active{background:var(--line)}
+#ptmenu .hd{font-size:12px;color:var(--mut);padding:4px 12px 6px}
+/* шторки */
+.sheet{position:fixed;left:8px;right:8px;bottom:calc(var(--sab) + 78px);max-height:min(62dvh,calc(100dvh - var(--sat) - var(--sab) - 150px));z-index:2500;background:var(--bg);border-radius:20px;box-shadow:0 -4px 30px rgba(0,0,0,.4);transform:translateY(120%);visibility:hidden;transition:transform .22s ease,visibility 0s .22s;display:flex;flex-direction:column}
+.sheet.open{transform:none;visibility:visible;transition:transform .22s ease}
+.sheet header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 8px}
+.sheet h2{margin:0;font-size:18px}
+.sheet .x{width:34px;height:34px;border-radius:50%;background:var(--line);font-size:16px}
+.sheet .body{touch-action:pan-y;overscroll-behavior-y:contain;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:4px 16px 18px;user-select:text;-webkit-user-select:text}
+.sec{margin:14px 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
+.row{display:flex;gap:8px;align-items:center;margin:6px 0}
+.row>label{flex:0 0 96px;color:var(--mut);font-size:13px}
+input[type=text],input[type=password],select{flex:1;min-width:0;font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 10px;-webkit-user-select:text;user-select:text}
+.btn{background:var(--acc);color:var(--accfg);border-radius:11px;padding:9px 13px;font-weight:600}
+.btn.sec2{background:var(--line);color:var(--fg)}
+.btn.bad{background:var(--bad);color:#fff}
+.btn:disabled{opacity:.5}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.note{font-size:13px;color:var(--mut);margin:4px 0}
+.ok{color:var(--ok)} .err{color:var(--bad)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin:8px 0}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chipb{padding:6px 10px;border-radius:999px;background:var(--line);font-size:13px}
+.chipb.on{background:var(--acc);color:var(--accfg)}
+.steps{margin:6px 0;padding:0;list-style:none}
+.steps li{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)}
+.steps .a{width:28px;text-align:center;font-size:20px}
+.steps .t{flex:1;font-size:14px}
+.steps .m{color:var(--mut);font-size:12px;white-space:nowrap}
+#logbox{font:11px/1.3 ui-monospace,Menlo,monospace;max-height:180px;overflow:auto;white-space:pre-wrap;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px}
+.yb{width:30px;height:30px;border-radius:50%;color:#fff;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.5)}
+.poi-i{width:26px;height:26px;border-radius:50%;background:#fff;border:2px solid var(--acc);display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 1px 5px rgba(0,0,0,.4)}
+.me{position:relative;width:34px;height:34px}
+.me svg{width:34px;height:34px;transition:transform .2s linear;filter:drop-shadow(0 1px 3px rgba(0,0,0,.5))}
+.leaflet-container{font:inherit}
+.leaflet-popup-content-wrapper{border-radius:12px}
+</style>
+</head>
+<body class="night">
+<div id="map"></div>
+
+<div id="hud">
+  <div id="spd" class="chip"><b id="spdV">0</b><small>км/год</small></div>
+  <div id="turn" hidden>
+    <div class="ar" id="turnAr">↑</div>
+    <div class="tx"><div class="d" id="turnD">—</div><div class="n" id="turnN"></div></div>
+    <button class="off" id="turnOff" hidden>Перебудувати</button>
+  </div>
+  <div id="cmp" class="chip"><span id="cmpArrow">▲</span><b id="cmpV">—</b></div>
+</div>
+<div id="rem" class="chip" hidden><b id="remV">—</b><small id="remS"></small></div>
+
+<div id="rcol" class="col">
+  <button class="fab" id="bRain"><span>🌧</span><small id="bRainL">Дощ</small></button>
+  <button class="fab" id="bFc"><span>☁️</span><small id="bFcL">Прогноз</small></button>
+  <button class="fab" id="bWind"><span>💨</span><small id="bWindL">Вітер</small></button>
+  <button class="fab" id="bBike"><span>🚲</span><small id="bBikeL">YouBike</small></button>
+  <button class="fab" id="bSnd"><span id="bSndI">🔊</span><small>Звук</small></button>
+</div>
+<div id="lcol" class="col">
+  <button class="fab sm" id="bZin">＋</button>
+  <button class="fab sm" id="bZout">－</button>
+  <button class="fab sm" id="bLoc">📍</button>
+</div>
+<div id="fcbar" hidden>
+  <button class="fab sm" id="fcPlay">⏸</button>
+  <b id="fcT">--:--</b>
+  <input type="range" id="fcR" min="0" max="7" step="1" value="0">
+</div>
+
+<nav id="dock">
+  <div id="dockGrip" aria-hidden="true"></div>
+    <button id="dRoute"><span>🧭</span>Маршрут</button>
+  <button id="dPoi"><span>📍</span>Заклади</button>
+  <button id="dTransit"><span>🚆</span>Транспорт</button>
+  <button id="dSet"><span>⚙️</span>Налашт.</button>
+</nav>
+
+<div id="toasts"></div>
+<div id="ptmenu" hidden></div>
+
+<!-- Шторка: Маршрут -->
+<section class="sheet" id="shRoute">
+  <header><h2>🚴 Маршрут</h2><button class="x" data-close>✕</button></header>
+  <div class="body">
+    <div class="card">
+      <div class="row"><label>Старт</label><span id="rtStart">моя позиція</span></div>
+      <div class="row"><label>Через</label><span id="rtVia">—</span></div>
+      <div class="row"><label>Фініш</label><span id="rtFin">не задано (довгий тап по карті)</span></div>
+    </div>
+    <div class="row"><label>Профіль</label>
+      <select id="rtProf">
+        <option value="cycling-regular">Звичайний велосипед</option>
+        <option value="cycling-road">Шосейний</option>
+        <option value="cycling-mountain">Гірський</option>
+        <option value="cycling-electric">Електровелосипед</option>
+      </select></div>
+    <div class="btns">
+      <button class="btn" id="rtBuild">Побудувати</button>
+      <button class="btn" id="rtGo" disabled>▶ Навігація</button>
+      <button class="btn sec2" id="rtClear">Очистити</button>
+    </div>
+    <div class="btns">
+      <button class="btn sec2" id="rtVr">Відкрити маршрут з VRacer</button>
+      <button class="btn sec2" id="rtFile">Відкрити GPX…</button>
+      <input type="file" id="rtFileIn" accept=".gpx,.geojson,.json" hidden>
+    </div>
+    <div class="note" id="rtInfo">Довгий тап по карті → «Фініш», «Через» або «Старт». Маршрут будується через OpenRouteService (велопрофіль), запасний варіант — TomTom.</div>
+    <ul class="steps" id="rtSteps"></ul>
+  </div>
+</section>
+
+<!-- Шторка: Заклади (POI зі спільного сховища) -->
+<section class="sheet" id="shPoi">
+  <header><h2>📍 Заклади</h2><button class="x" data-close>✕</button></header>
+  <div class="body">
+    <div class="note" id="poiInfo"></div>
+    <div class="chips" id="poiChips"></div>
+    <div class="note">Точки беруться зі спільної бази VRacer (Налаштування → Сигнали → бренд-бази). Показуються поблизу центру карти від зуму 13.</div>
+  </div>
+</section>
+
+<!-- Шторка: Транспорт (TDX) -->
+<section class="sheet" id="shTransit">
+  <header><h2>🚆 Транспорт · TDX</h2><button class="x" data-close>✕</button></header>
+  <div class="body">
+    <div class="card"><div id="tdxState" class="note">—</div></div>
+    <div class="sec">YouBike на карті</div>
+    <div class="chips" id="ybModes"></div>
+    <div class="note" id="ybInfo">Кнопка 🚲 праворуч вмикає станції. Показуються від зуму 14.</div>
+    <div class="btns"><button class="btn" id="tdxTest">Перевірити TDX</button></div>
+    <div class="note">Тут буде: YouBike (станції й вільні велосипеди), автобуси, потяги (TRA/THSR), метро, комбіновані маршрути. Спершу перевіряємо ключі і доступність API з браузера.</div>
+    <pre id="tdxOut" class="note" style="white-space:pre-wrap"></pre>
+  </div>
+</section>
+
+<!-- Шторка: Налаштування -->
+<section class="sheet" id="shSet">
+  <header><h2>⚙️ Налаштування</h2><button class="x" data-close>✕</button></header>
+  <div class="body">
+    <div class="note" id="stamp"></div>
+
+    <div class="sec">API ключі (спільні з VRacer)</div>
+    <div id="keys"></div>
+
+    <div class="sec">Карта і кеш</div>
+    <div class="row"><label>Тема</label>
+      <select id="sDay">
+        <option value="vracer">Як у VRacer</option>
+        <option value="auto">Авто (за часом)</option>
+        <option value="day">День</option>
+        <option value="night">Ніч</option>
+      </select></div>
+    <div class="row"><label>Офлайн-карта</label>
+      <select id="sMb"><option value="1">Використовувати з VRacer</option><option value="0">Не завантажувати</option></select></div>
+    <div class="card note" id="cacheInfo">—</div>
+
+    <div class="sec">Звук</div>
+    <div class="row"><label>Голос</label><span id="voiceInfo" class="note"></span></div>
+    <div class="btns"><button class="btn sec2" id="sndTest">Перевірити звук</button></div>
+
+    <div class="sec">Датчики</div>
+    <div class="btns"><button class="btn sec2" id="cmpAsk">Дозволити компас</button></div>
+    <div class="note" id="sensInfo"></div>
+
+    <div class="sec">Журнал</div>
+    <div id="logbox"></div>
+  </div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+'use strict';
+/* ═══════════ vTrip · ядро: утиліти, спільне сховище з VRacer, карта, GPS, звук ═══════════
+   СПІЛЬНЕ З VRacer (той самий origin — olegracer.github.io):
+   • localStorage з префіксом 'ar_' (ключі API: cwaKey, tomtomKey, orsKey, cartoKey, googleApiKey; POI: poibrandsdb, poicustomcats)
+   • IndexedDB 'vracer-map' v2: стор 'tiles' (ключ z_x_y), стор 'files' (mbtilesFile, routeFile, sqlWasmCache)
+   Власні налаштування vTrip — ключі 'ar_vt_*' (щоб не псувати налаштування VRacer: 'ar_mapcfg' лише ЧИТАЄМО). */
+const BUILD='23.10.2026 11:11';
+const $=id=>document.getElementById(id);
+function lg(k){try{const s=localStorage.getItem('ar_'+k);return s?JSON.parse(s):null;}catch(e){return null;}}
+function ls(k,v){try{localStorage.setItem('ar_'+k,JSON.stringify(v));}catch(e){}}
+
+/* ── журнал (видно в Налаштуваннях) ── */
+const LOGS=[];
+function dbgEv(m){
+  const t=new Date().toLocaleTimeString('uk-UA',{hour12:false});
+  LOGS.push(t+' '+m); if(LOGS.length>300) LOGS.shift();
+  try{ console.log('[vt]',m); }catch(e){}
+  const b=$('logbox'); if(b && $('shSet').classList.contains('open')){ b.textContent=LOGS.slice(-80).join('\n'); }
+}
+window.addEventListener('error',e=>dbgEv('JS-помилка: '+e.message+' @'+(e.lineno||'?')));
+window.addEventListener('unhandledrejection',e=>dbgEv('Promise: '+(e.reason&&e.reason.message||e.reason)));
+
+/* ── тости ── */
+function sht(msg,ms,cls){
+  const el=document.createElement('div'); el.className='toast'+(cls?' '+cls:''); el.textContent=msg;
+  const box=$('toasts'); box.appendChild(el);
+  while(box.children.length>3) box.firstChild.remove();
+  const kill=()=>{ try{el.remove();}catch(e){} };
+  el.onclick=kill; setTimeout(kill, ms||4000);
+}
+
+/* ── геометрія ── */
+function haversineM(lat1,lon1,lat2,lon2){
+  const R=6371000, p=Math.PI/180, dLa=(lat2-lat1)*p, dLo=(lon2-lon1)*p;
+  const a=Math.sin(dLa/2)**2+Math.cos(lat1*p)*Math.cos(lat2*p)*Math.sin(dLo/2)**2;
+  return 2*R*Math.asin(Math.min(1,Math.sqrt(a)));
+}
+function fmtDist(m){ return m>=1000 ? (m/1000).toFixed(m>=10000?0:1)+' км' : Math.round(m/10)*10+' м'; }
+function fmtDur(s){ const h=Math.floor(s/3600), m=Math.round((s%3600)/60); return h?h+' год '+m+' хв':m+' хв'; }
+
+/* ── власні налаштування ── */
+const CFG=Object.assign({dayMode:'vracer', sound:true, useMb:true, bike:'cycling-regular', radar:false, wind:false, fc:false, poi:{}, view:null}, lg('vt_cfg')||{});
+function saveCfg(){ ls('vt_cfg',CFG); }
+const SHARED=()=>lg('mapcfg')||{};                       // налаштування VRacer — ТІЛЬКИ читання
+function cacheZ(){ const s=SHARED(); return [s.cacheZoomMin!=null?s.cacheZoomMin:17, s.cacheZoomMax!=null?s.cacheZoomMax:19]; }
+// сумісність з кодом погоди, перенесеним із VRacer (там читається MapCfg.nowEnabled / windEnabled)
+const MapCfg={ get nowEnabled(){return CFG.radar;}, get windEnabled(){return CFG.wind;} };
+
+/* ── ключі API (ті самі, що у VRacer) ── */
+const KEYDEFS=[
+  {k:'cwaKey',     name:'CWA (радар, вітер)',  hint:'opendata.cwa.gov.tw'},
+  {k:'orsKey',     name:'OpenRouteService',    hint:'веломаршрути'},
+  {k:'tomtomKey',  name:'TomTom',              hint:'запасний веломаршрут'},
+  {k:'cartoKey',   name:'Carto (необов\'язково)', hint:''},
+  {k:'tdxId',      name:'TDX Client ID',       hint:'tdx.transportdata.tw'},
+  {k:'tdxSecret',  name:'TDX Client Secret',   hint:''}
+];
+function getKey(k){ const v=lg(k); return (typeof v==='string'?v:'').trim(); }
+function getCartoApiKey(){ return getKey('cartoKey'); }
+
+/* ── день/ніч ── */
+function isDay(){
+  const m=CFG.dayMode;
+  if(m==='day') return true; if(m==='night') return false;
+  if(m==='auto'){ const h=new Date().getHours(); return h>=6 && h<18; }
+  const s=SHARED(); return s.mapInverted!==false;          // VRacer: mapInverted===true → день
+}
+function applyTheme(){
+  const d=isDay(); document.body.classList.toggle('day',d); document.body.classList.toggle('night',!d);
+  try{ document.querySelector('meta[name=theme-color]').content=d?'#f4f5f7':'#0f1216'; }catch(e){}
+}
+
+/* ═══ IndexedDB (та сама база, що у VRacer: 'vracer-map' v2) ═══ */
+const MAPDB_NAME='vracer-map', MAPDB_STORE='files', MAPDB_TILES='tiles';
+let _dbP=null;
+function mapIdb(){
+  if(_dbP) return _dbP;
+  _dbP=new Promise((resolve,reject)=>{
+    const req=indexedDB.open(MAPDB_NAME,2);
+    req.onupgradeneeded=()=>{ const db=req.result;
+      if(!db.objectStoreNames.contains(MAPDB_STORE)) db.createObjectStore(MAPDB_STORE);
+      if(!db.objectStoreNames.contains(MAPDB_TILES)) db.createObjectStore(MAPDB_TILES); };
+    req.onsuccess=()=>{ const db=req.result; db.onversionchange=()=>{ try{db.close();}catch(e){} _dbP=null; }; resolve(db); };
+    req.onerror=()=>{ _dbP=null; reject(req.error); };
+  });
+  return _dbP;
+}
+async function idbSet(key,val){ try{ const db=await mapIdb(); return await new Promise((res,rej)=>{ const tx=db.transaction(MAPDB_STORE,'readwrite'); tx.objectStore(MAPDB_STORE).put(val,key); tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error); }); }catch(e){ return false; } }
+async function idbGet(key){ try{ const db=await mapIdb(); return await new Promise((res,rej)=>{ const r=db.transaction(MAPDB_STORE,'readonly').objectStore(MAPDB_STORE).get(key); r.onsuccess=()=>res(r.result||null); r.onerror=()=>rej(r.error); }); }catch(e){ return null; } }
+function tileKey(z,x,y){ return z+'_'+x+'_'+y; }
+async function cacheTileBytes(z,x,y,buf){ try{ const db=await mapIdb(); return await new Promise(res=>{ const tx=db.transaction(MAPDB_TILES,'readwrite'); tx.objectStore(MAPDB_TILES).put(buf,tileKey(z,x,y)); tx.oncomplete=()=>res(true); tx.onerror=()=>res(false); }); }catch(e){ return false; } }
+async function idbGetTile(z,x,y){ try{ const db=await mapIdb(); return await new Promise(res=>{ const r=db.transaction(MAPDB_TILES,'readonly').objectStore(MAPDB_TILES).get(tileKey(z,x,y)); r.onsuccess=()=>res(r.result||null); r.onerror=()=>res(null); }); }catch(e){ return null; } }
+async function idbCountTiles(){ try{ const db=await mapIdb(); return await new Promise(res=>{ const r=db.transaction(MAPDB_TILES,'readonly').objectStore(MAPDB_TILES).count(); r.onsuccess=()=>res(r.result); r.onerror=()=>res(-1); }); }catch(e){ return -1; } }
+
+/* ═══ офлайн-карта VRacer (.mbtiles через sql.js) — лише читання ═══ */
+const SQLJS_CDN='https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/';
+let mbSqlDb=null, mbFileName=null, _sqlP=null;
+function loadScriptUrl(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('не завантажився '+src)); document.head.appendChild(s); }); }
+async function loadSqlJsScript(){
+  if(typeof initSqlJs!=='undefined') return;
+  let text=null;
+  try{ const r=await fetch(SQLJS_CDN+'sql-wasm.js'); if(r.ok){ text=await r.text(); idbSet('sqlJsCache',{text:text}); } }catch(e){}
+  if(!text){ const rec=await idbGet('sqlJsCache'); if(rec && rec.text) text=rec.text; }
+  if(!text) throw new Error('sql.js недоступний (немає мережі й кешу)');
+  const u=URL.createObjectURL(new Blob([text],{type:'text/javascript'}));
+  try{ await loadScriptUrl(u); } finally { URL.revokeObjectURL(u); }
+}
+function ensureSqlJs(){
+  if(_sqlP) return _sqlP;
+  _sqlP=(async()=>{
+    await loadSqlJsScript();
+    let wasmUrl=null;
+    try{ const rec=await idbGet('sqlWasmCache'); if(rec && rec.bytes) wasmUrl=URL.createObjectURL(new Blob([rec.bytes],{type:'application/wasm'})); }catch(e){}
+    const SQL=await initSqlJs({locateFile:f=>(f.endsWith('.wasm')&&wasmUrl)?wasmUrl:(SQLJS_CDN+f)});
+    if(!wasmUrl) fetch(SQLJS_CDN+'sql-wasm.wasm').then(r=>r.arrayBuffer()).then(b=>idbSet('sqlWasmCache',{bytes:b})).catch(()=>{});
+    return SQL;
+  })();
+  _sqlP.catch(()=>{ _sqlP=null; });
+  return _sqlP;
+}
+let mbStmt=null; const mbTileCache=new Map(); const MB_CACHE_MAX=600;
+function mbGetTileBytes(z,x,y){
+  if(!mbSqlDb) return null;
+  const key=tileKey(z,x,y); if(mbTileCache.has(key)) return mbTileCache.get(key);
+  let bytes=null;
+  try{
+    if(!mbStmt) mbStmt=mbSqlDb.prepare('SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?');
+    mbStmt.bind([z,x,Math.pow(2,z)-1-y]); if(mbStmt.step()) bytes=mbStmt.get()[0]; mbStmt.reset();
+  }catch(e){ try{ if(mbStmt) mbStmt.free(); }catch(e2){} mbStmt=null; }
+  if(mbTileCache.size>=MB_CACHE_MAX) mbTileCache.delete(mbTileCache.keys().next().value);
+  mbTileCache.set(key,bytes); return bytes;
+}
+// синхронний WASM → читаємо пачками по кілька тайлів за кадр (як у VRacer), щоб не вішати iOS
+const MB_BATCH=6; let mbQ=[], mbQOn=false;
+function mbSchedule(z,x,y,cb,mapRef){ mbQ.push({z,x,y,cb,mapRef}); if(!mbQOn){ mbQOn=true; requestAnimationFrame(mbProcess); } }
+function mbProcess(){
+  mbQ.splice(0,MB_BATCH).forEach(j=>{
+    if(j.mapRef && Math.round(j.mapRef.getZoom())!==j.z){ j.cb(null,true); return; }  // застарілий (зум уже змінився)
+    let b=null; try{ b=mbGetTileBytes(j.z,j.x,j.y); }catch(e){} j.cb(b,false);
+  });
+  if(mbQ.length) requestAnimationFrame(mbProcess); else mbQOn=false;
+}
+async function loadOfflineMap(){
+  if(!CFG.useMb) return;
+  try{
+    const rec=await idbGet('mbtilesFile');
+    if(!rec || !rec.bytes){ dbgEv('офлайн-карти VRacer (mbtiles) у сховищі немає — працюємо онлайн + кеш тайлів'); return; }
+    sht('Завантажую офлайн-карту VRacer…');
+    const SQL=await ensureSqlJs();
+    mbSqlDb=new SQL.Database(new Uint8Array(rec.bytes)); mbFileName=rec.name||'mbtiles';
+    mbStmt=null; mbTileCache.clear();
+    dbgEv('офлайн-карта: '+mbFileName+' ('+Math.round(rec.bytes.byteLength/1048576)+' МБ)');
+    sht('Офлайн-карта готова');
+    if(window.map) map.eachLayer(l=>{ if(l.redraw && (l._nlsc||l._carto)) l.redraw(); });
+  }catch(e){ dbgEv('офлайн-карта не завантажена: '+(e&&e.message)); }
+}
+// спільне джерело «локальних» тайлів: .mbtiles → накопичений кеш IndexedDB
+function localTile(z,x,y,mapRef,cb){
+  const idb=()=>idbGetTile(z,x,y).then(b=>cb(b||null,false));
+  if(mbSqlDb) mbSchedule(z,x,y,(b,stale)=>{ if(stale){ cb(null,true); return; } if(b) cb(b,false); else idb(); },mapRef);
+  else idb();
+}
+
+/* ═══ шари карти: NLSC (z≥15) + Carto Dark (z≤14) — гібрид, як у VRacer ═══ */
+const NLSC_URL='https://wmts.nlsc.gov.tw/wmts/EMAPX99/default/GoogleMapsCompatible/{z}/{y}/{x}.png';
+const HYB_NLSC_ZMIN=15, HYB_FAR_FADE_END=16.5, MAP_MIN_ZOOM=7, MAP_MAX_ZOOM=19;
+let NLSC_CORS='unknown';
+function hybFarOpacity(z){ return Math.max(0,Math.min(1,1-(z-HYB_NLSC_ZMIN)/(HYB_FAR_FADE_END-HYB_NLSC_ZMIN))); }
+function hybFadeBind(layer,map,fn){
+  const upd=function(){
+    try{
+      const c=layer.getContainer(); if(!c) return;
+      const z=map.getZoom(), o=fn?fn(z):Math.max(0,Math.min(1,z-(HYB_NLSC_ZMIN-1)));
+      if(o===layer._hybO) return;
+      if(layer._hybO!=null && Math.abs(o-layer._hybO)<0.02 && o!==0 && o!==1) return;
+      c.style.transition=(layer._hybO!=null && Math.abs(o-layer._hybO)>0.3)?'opacity .18s ease':'none';
+      layer._hybO=o; layer.options.opacity=o; c.style.opacity=o;
+    }catch(e){}
+  };
+  map.on('zoom zoomend viewreset',upd); layer.on('add load',upd); upd();
+}
+function drawBlobTo(tile,blob,done,tag){
+  const fin=()=>done(null,tile);
+  if(typeof createImageBitmap==='function'){
+    createImageBitmap(blob).then(bm=>{ try{tile.getContext('2d').drawImage(bm,0,0,256,256);}catch(e){} try{bm.close();}catch(e){} fin(); })
+      .catch(()=>done(new Error(tag+' decode')));
+  } else {
+    const u=URL.createObjectURL(blob), im=new Image();
+    im.onload=()=>{ URL.revokeObjectURL(u); try{tile.getContext('2d').drawImage(im,0,0,256,256);}catch(e){} fin(); };
+    im.onerror=()=>{ URL.revokeObjectURL(u); done(new Error(tag)); }; im.src=u;
+  }
+}
+const NlscLayer=L.GridLayer.extend({
+  _nlsc:true,
+  initialize:function(url,opts){ this._u=url; L.GridLayer.prototype.initialize.call(this,opts); this.on('tileunload',e=>{ try{ if(e.tile._ac) e.tile._ac.abort(); }catch(x){} }); },
+  createTile:function(c,done){
+    const self=this, z=c.z, x=c.x, y=c.y;
+    const tile=document.createElement('canvas'); tile.width=256; tile.height=256;
+    const ac=(typeof AbortController!=='undefined')?new AbortController():null; tile._ac=ac;
+    const url=this._u.replace('{z}',z).replace('{x}',x).replace('{y}',y);
+    const plain=function(){ const im=new Image(); im.onload=()=>{ try{tile.getContext('2d').drawImage(im,0,0,256,256);}catch(e){} done(null,tile); }; im.onerror=()=>done(new Error('nlsc')); im.src=url; };
+    const online=function(){
+      if(NLSC_CORS==='bad'){ plain(); return; }
+      fetch(url,ac?{signal:ac.signal}:undefined).then(r=>{ if(!r.ok){ const e=new Error('http '+r.status); e._h=true; throw e; } return r.arrayBuffer(); })
+        .then(buf=>{
+          if(NLSC_CORS==='unknown'){ NLSC_CORS='ok'; dbgEv('NLSC: CORS ок → кеш тайлів працює'); }
+          const cz=cacheZ(); if(z>=HYB_NLSC_ZMIN && z>=cz[0] && z<=cz[1]) cacheTileBytes(z,x,y,buf);
+          drawBlobTo(tile,new Blob([buf],{type:'image/png'}),done,'nlsc');
+        }).catch(err=>{ if(err && (err._h||err.name==='AbortError')){ done(err); return; } if(NLSC_CORS==='unknown'){ NLSC_CORS='bad'; dbgEv('NLSC: CORS недоступний → без кешу'); } plain(); });
+    };
+    localTile(z,x,y,{getZoom:()=>self._map?self._map.getZoom():z},(bytes,stale)=>{
+      if(stale){ done(null,tile); return; }
+      if(bytes) drawBlobTo(tile,new Blob([bytes],{type:'image/png'}),done,'nlsc-local'); else online();
+    });
+    return tile;
+  }
+});
+function cartoUrl(z,x,y){ const k=getCartoApiKey(); return 'https://'+'abcd'[(x+y)&3]+'.basemaps.cartocdn.com/rastertiles/dark_nolabels/'+z+'/'+x+'/'+y+'.png'+(k?'?key='+encodeURIComponent(k):''); }
+// z14 Carto: кешується в ТОЙ САМИЙ ключ z_x_y, що й у VRacer (z14 NLSC не кешується — немає конфлікту)
+const CartoUnderLayer=L.GridLayer.extend({
+  _carto:true,
+  createTile:function(c,done){
+    const z=c.z, x=c.x, y=c.y, tile=document.createElement('img'); tile.setAttribute('role','presentation'); tile.style.width=tile.style.height='256px';
+    const url=cartoUrl(z,x,y);
+    const direct=()=>{ tile.onload=()=>done(null,tile); tile.onerror=()=>done(new Error('carto'),tile); tile.src=url; };
+    const fromBytes=b=>{ const u=URL.createObjectURL(new Blob([b],{type:'image/png'})); tile.onload=()=>{URL.revokeObjectURL(u);done(null,tile);}; tile.onerror=()=>{URL.revokeObjectURL(u);done(new Error('carto'),tile);}; tile.src=u; };
+    if(z!==HYB_NLSC_ZMIN-1){ direct(); return tile; }
+    const net=()=>fetch(url).then(r=>{ if(!r.ok) throw new Error('http'); return r.arrayBuffer(); }).then(b=>{ cacheTileBytes(z,x,y,b); fromBytes(b); }).catch(direct);
+    localTile(z,x,y,null,(b,stale)=>{ if(stale){ done(null,tile); return; } if(b) fromBytes(b); else net(); });  // БЕЗ mapRef — як у VRacer (інакше дірки на z≥15)
+    return tile;
+  }
+});
+
+/* ═══ карта ═══ */
+const map=L.map('map',{zoomControl:false,attributionControl:false,minZoom:MAP_MIN_ZOOM,maxZoom:MAP_MAX_ZOOM,zoomSnap:0.5,
+  zoomAnimation:false,fadeAnimation:false,markerZoomAnimation:false,inertia:true,bounceAtZoomLimits:false});
+window.map=map;
+(function initLayers(){
+  const v=CFG.view || {lat:23.7,lon:121,z:15};
+  map.setView([v.lat,v.lon],v.z);
+  const base=L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_nolabels/{z}/{x}/{y}.png',{subdomains:'abcd',minZoom:MAP_MIN_ZOOM,maxZoom:16,maxNativeZoom:11,keepBuffer:0,className:'carto-layer'});
+  base._carto=true;
+  base.getTileUrl=function(c){ return cartoUrl(c.z,c.x,c.y); };
+  const far=new CartoUnderLayer({minZoom:MAP_MIN_ZOOM,maxZoom:19,maxNativeZoom:HYB_NLSC_ZMIN-1,keepBuffer:0,className:'carto-layer'});
+  const nlsc=new NlscLayer(NLSC_URL,{minZoom:HYB_NLSC_ZMIN-1,maxZoom:19,keepBuffer:0,className:'nlsc-layer'});
+  [base,far,nlsc].forEach(l=>l.addTo(map)); base.bringToBack(); far.bringToBack(); base.bringToBack();
+  hybFadeBind(base,map,hybFarOpacity); hybFadeBind(far,map,hybFarOpacity); hybFadeBind(nlsc,map);
+  map.on('moveend',()=>{ const c=map.getCenter(); CFG.view={lat:+c.lat.toFixed(5),lon:+c.lng.toFixed(5),z:map.getZoom()}; clearTimeout(window._vtSave); window._vtSave=setTimeout(saveCfg,1500); });
+})();
+
+/* ═══ GPS, курс, компас, Wake Lock ═══ */
+let _lastLat=null,_lastLon=null,_lastAcc=0,_speedMs=0,_gpsHeading=null,_compass=null,_heading=null,_follow=true;
+let meMarker=null, meCircle=null, _firstFix=true;
+const ME_SVG='<svg viewBox="0 0 34 34"><circle cx="17" cy="17" r="15" fill="rgba(10,124,255,.18)"/><path d="M17 3 L26 28 L17 22.5 L8 28 Z" fill="#0a7cff" stroke="#fff" stroke-width="2.2" stroke-linejoin="round"/></svg>';
+function ensureMe(lat,lon){
+  if(meMarker) return;
+  meMarker=L.marker([lat,lon],{icon:L.divIcon({className:'',html:'<div class="me">'+ME_SVG+'</div>',iconSize:[34,34],iconAnchor:[17,17]}),interactive:false,zIndexOffset:1000}).addTo(map);
+  meCircle=L.circle([lat,lon],{radius:20,weight:1,color:'#0a7cff',fillOpacity:.08,interactive:false}).addTo(map);
+}
+function setHeading(h){
+  _heading=h;
+  const svg=meMarker && meMarker.getElement() && meMarker.getElement().querySelector('svg');
+  if(svg) svg.style.transform='rotate('+(h||0)+'deg)';
+  $('cmpV').textContent=(h==null||isNaN(h))?'—':Math.round(h)+'°';
+  $('cmpArrow').style.transform='rotate('+(h||0)+'deg)';
+}
+function pickHeading(){
+  // на ходу — курс GPS, на місці — компас телефону
+  if(_gpsHeading!=null && _speedMs>1.2) setHeading(_gpsHeading);
+  else if(_compass!=null) setHeading(_compass);
+  else if(_gpsHeading!=null) setHeading(_gpsHeading);
+}
+function gpsOnPos(pos){
+  const c=pos.coords; _lastLat=c.latitude; _lastLon=c.longitude; _lastAcc=c.accuracy||0;
+  _speedMs=(c.speed!=null && c.speed>=0)?c.speed:0;
+  _gpsHeading=(c.heading!=null && !isNaN(c.heading) && _speedMs>0.5)?c.heading:_gpsHeading;
+  ensureMe(_lastLat,_lastLon); meMarker.setLatLng([_lastLat,_lastLon]); meCircle.setLatLng([_lastLat,_lastLon]); meCircle.setRadius(Math.max(5,Math.min(_lastAcc,150)));
+  $('spdV').textContent=Math.round(_speedMs*3.6);
+  pickHeading();
+  if(_firstFix){ _firstFix=false; map.setView([_lastLat,_lastLon],Math.max(map.getZoom(),16),{animate:false}); dbgEv('перший GPS: ±'+Math.round(_lastAcc)+' м'); }
+  else if(_follow) map.setView([_lastLat,_lastLon],map.getZoom(),{animate:false});
+  ls('vt_lastpos',{lat:_lastLat,lon:_lastLon,t:Date.now()});
+  try{ navTick(); }catch(e){ dbgEv('navTick: '+e.message); }
+  try{ wxTick(); }catch(e){}
+}
+function gpsStart(){
+  if(!navigator.geolocation){ sht('GPS недоступний у цьому браузері'); return; }
+  navigator.geolocation.watchPosition(gpsOnPos,e=>{ dbgEv('GPS помилка: '+e.message); if(e.code===1) sht('Дозвольте доступ до геолокації'); },{enableHighAccuracy:true,maximumAge:1000,timeout:20000});
+}
+let _cmpOn=false, _cmpSm=null;
+function onOrient(e){
+  let h=null;
+  if(typeof e.webkitCompassHeading==='number') h=e.webkitCompassHeading;                 // iOS: 0–360 за годинниковою від півночі
+  else if(e.absolute && e.alpha!=null) h=(360-e.alpha)%360;                              // Android (deviceorientationabsolute)
+  if(h==null || isNaN(h)) return;
+  if(_cmpSm==null) _cmpSm=h; else { let d=((h-_cmpSm+540)%360)-180; _cmpSm=(_cmpSm+d*0.25+360)%360; } // згладжування по колу
+  _compass=_cmpSm; $('sensInfo').textContent='Компас: '+Math.round(_compass)+'°'; pickHeading();
+}
+async function compassStart(){
+  if(_cmpOn) return true;
+  try{
+    if(typeof DeviceOrientationEvent!=='undefined' && typeof DeviceOrientationEvent.requestPermission==='function'){
+      const r=await DeviceOrientationEvent.requestPermission(); if(r!=='granted'){ sht('Компас: доступ не надано'); return false; }
+    }
+    window.addEventListener('deviceorientationabsolute',onOrient,true);
+    window.addEventListener('deviceorientation',onOrient,true);
+    _cmpOn=true; dbgEv('компас увімкнено'); return true;
+  }catch(e){ dbgEv('компас: '+e.message); return false; }
+}
+let _wl=null;
+async function wakeOn(){ try{ if('wakeLock' in navigator && !_wl){ _wl=await navigator.wakeLock.request('screen'); _wl.addEventListener('release',()=>{_wl=null;}); } }catch(e){} }
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden && (navState.active)) wakeOn(); });
+
+/* ═══ озвучка: навігація важливіша за погоду (як у VRacer, спрощено) ═══ */
+const SP={q:[],busy:false,cur:null,tok:0,watch:null};
+function pickVoice(){
+  if(!('speechSynthesis' in window)) return null;
+  const vs=speechSynthesis.getVoices()||[];
+  return vs.find(v=>/^uk/i.test(v.lang)) || null;
+}
+function spNext(){
+  clearTimeout(SP.watch);
+  const now=Date.now();
+  SP.q=SP.q.filter(i=>now-i.t<=i.ttl);
+  SP.q.sort((a,b)=>b.rank-a.rank||a.t-b.t);
+  const it=SP.q.shift(); if(!it){ SP.busy=false; SP.cur=null; return; }
+  SP.busy=true; SP.cur=it.phase; const tok=++SP.tok;
+  const done=()=>{ if(tok!==SP.tok) return; SP.tok++; spNext(); };
+  try{
+    const u=new SpeechSynthesisUtterance(it.text); u.lang='uk-UA'; u.rate=1; u.volume=1;
+    const v=pickVoice(); if(v){ try{ u.voice=v; }catch(e){} }
+    u.onend=done; u.onerror=done;
+    SP.watch=setTimeout(done,Math.min(12000,600+it.text.length*85)*1.6+1500);   // iOS інколи не шле onend
+    speechSynthesis.speak(u);
+  }catch(e){ SP.busy=false; }
+}
+function speak(text,o){
+  if(!CFG.sound || !('speechSynthesis' in window)) return;
+  o=o||{}; const phase=o.phase||'nav', rank=phase==='nav'?2:1;
+  if(o.key) SP.q=SP.q.filter(i=>i.key!==o.key);
+  SP.q.push({text:text,t:Date.now(),ttl:o.ttl||(phase==='nav'?12000:60000),key:o.key||null,phase:phase,rank:rank});
+  if(SP.busy && rank===2 && SP.cur==='wx'){ SP.tok++; try{speechSynthesis.cancel();}catch(e){} spNext(); return; } // навігація перериває погоду
+  if(!SP.busy) spNext();
+}
+async function chime(){
+  if(!CFG.sound) return;
+  try{
+    const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+    window._ac=window._ac||new AC(); const ac=window._ac; if(ac.state==='suspended') await ac.resume();
+    const t=ac.currentTime;
+    [[880,0,.16],[1175,.18,.2]].forEach(n=>{ const o=ac.createOscillator(), g=ac.createGain(); o.type='sine'; o.frequency.value=n[0];
+      g.gain.setValueAtTime(0,t+n[1]); g.gain.linearRampToValueAtTime(.5,t+n[1]+.02); g.gain.exponentialRampToValueAtTime(.001,t+n[1]+n[2]);
+      o.connect(g); g.connect(ac.destination); o.start(t+n[1]); o.stop(t+n[1]+n[2]+.05); });
+  }catch(e){}
+}
+// перший дотик розблоковує голос/аудіо (WebKit інакше мовчить)
+(function(){ let done=false; function unlock(){ if(done) return; done=true;
+  try{ if('speechSynthesis' in window){ const u=new SpeechSynthesisUtterance(' '); u.volume=0; u.lang='uk-UA'; speechSynthesis.speak(u); } }catch(e){}
+  try{ chime(); }catch(e){}
+  compassStart();
+  document.removeEventListener('pointerdown',unlock,true); }
+  document.addEventListener('pointerdown',unlock,true); })();
+
+/* ── погода: сповіщення (плашка + дзвіночок + голос) ── */
+function wxSay(toastText,voiceText,info){
+  sht(toastText,6000,'wx');
+  if(!CFG.sound) return;
+  if(!SP.busy) chime();
+  setTimeout(()=>speak(voiceText,{phase:'wx'}),700);
+}
+const WX_CHECK_KM=5, _wxChk={rain:null,wind:null};
+function wxMarkChecked(k){ if(_lastLat!=null) _wxChk[k]={lat:_lastLat,lon:_lastLon}; }
+function wxCheckDue(k){ if(_lastLat==null) return false; const c=_wxChk[k]; return !c || haversineM(c.lat,c.lon,_lastLat,_lastLon)>=WX_CHECK_KM*1000; }
+// маршрутні змінні, які читає перенесений код погоди
+let mapRouteLatLngs=[], navProgressIndex=0;
+
+/* ── перенесено з VRacer без змін: x_fc.js ── */
+const WX_GRID_SIZE = 9;
+const WX_GRID_STEP_KM = 3;
+const WX_FRAME_COUNT = 8;     // 8 кроків по 15хв = 2 години наперед
+const WX_FRAME_MS = 800;      // трохи повільніше за колишні 500мс — кроки тут по 15хв реального часу, немає сенсу гнати анімацію так само швидко, як для 10-хвилинних кадрів радару
+const WX_REFETCH_MS = 15*60*1000; // 15хв — саме так часто Open-Meteo оновлює модель, частіше сенсу нема
+const WX_RECENTER_KM = 5;     // якщо від'їхав більш ніж на стільки км від точки останнього запиту — перезапитуємо сітку заново навколо нового центру
+const WX_PAN_DEBOUNCE_MS = 1500; // 16.09.2026: пауза після зупинки ручного панорамування карти, перш ніж перезапитати прогноз під новий центр
+
+function buildForecastGrid(centerLat, centerLon){
+  const latStepDeg = WX_GRID_STEP_KM/111; // 1° широти ≈ 111км, завжди
+  const lonStepDeg = WX_GRID_STEP_KM/(111*Math.cos(centerLat*Math.PI/180)); // довгота "стискається" на широті — компенсуємо, щоб крок був ~3км у реальних метрах в обох напрямках
+  const half = Math.floor(WX_GRID_SIZE/2);
+  const points=[];
+  for(let iy=-half; iy<=half; iy++){
+    for(let ix=-half; ix<=half; ix++){
+      points.push({lat:centerLat+iy*latStepDeg, lon:centerLon+ix*lonStepDeg});
+    }
+  }
+  return points;
+}
+
+// Один запит на ВСЮ сітку одразу (Open-Meteo повертає МАСИВ відповідей,
+// по одній на кожну координату, у ТОМУ САМОМУ порядку, що й у запиті).
+async function fetchPrecipForecast(gridPoints){
+  const lats = gridPoints.map(function(p){ return p.lat.toFixed(4); }).join(',');
+  const lons = gridPoints.map(function(p){ return p.lon.toFixed(4); }).join(',');
+  const url = 'https://api.open-meteo.com/v1/forecast?latitude='+lats+'&longitude='+lons+
+    '&minutely_15=precipitation&forecast_minutely_15='+WX_FRAME_COUNT+'&timezone=auto&_='+Date.now();
+  const res = await fetch(url, {cache:'no-store'});
+  if(!res.ok) throw new Error('Open-Meteo HTTP '+res.status);
+  const data = await res.json();
+  const arr = Array.isArray(data) ? data : [data]; // якщо запит на ОДНУ точку — Open-Meteo віддає об'єкт, не масив; підстраховуємось
+  if(!arr.length || !arr[0].minutely_15) throw new Error('Open-Meteo: порожня відповідь');
+  const times = arr[0].minutely_15.time; // однаковий часовий ряд для всіх точок сітки
+  const frames = times.map(function(t, i){
+    return {
+      time: t, // ISO-рядок, локальний час (бо timezone=auto)
+      points: gridPoints.map(function(p, j){
+        const v = (arr[j] && arr[j].minutely_15 && arr[j].minutely_15.precipitation) ? arr[j].minutely_15.precipitation[i] : 0;
+        return {lat:p.lat, lon:p.lon, mm:(v==null?0:v)};
+      })
+    };
+  });
+  return frames;
+}
+
+function fmtWxTime(isoStr){
+  // isoStr на кшталт "2026-09-15T20:45" (timezone=auto — вже локальний час)
+  const t = isoStr.split('T')[1];
+  return t ? t.slice(0,5) : '--:--';
+}
+
+// Пороги мм/15хв → колір зони. Синій=сліди, зелений=легкий, жовтий=
+// помірний, червоний=сильний. mm<=0 → null (не малюємо взагалі).
+function precipColor(mm){
+  if(!mm || mm<=0) return null;
+  if(mm<0.5) return [52,152,219];   // синій
+  if(mm<2)   return [46,204,113];   // зелений
+  if(mm<6)   return [241,196,15];   // жовтий
+  return [231,76,60];               // червоний
+}
+
+/* ── перенесено з VRacer без змін: x_cwa.js ── */
+const CWA_META_ID='O-A0058-003';       // легкий набір (1 КБ) — лише для перевірки ключа
+const CWA_MIN_DBZ=15;                  // нижче — вважаємо шумом/мряковою (≈0.3 мм/год) і не малюємо
+const CWA_REFRESH_MS=10*60*1000;
+const CWA_PNG_ID='O-A0058-006';        // 06.10.2026: прозорий PNG радара (≈150 КБ, 118–124°E / 20.5–26.5°N, 3600×3600) — НОВЕ джерело; сітка O-A0059-001 лишається як запасне/старе
+const CWA={ann:false, src:'', pngBadUntil:0, canvas:null, vals:null, nx:0, ny:0, res:0.0125, lonS:115, latS:18, dt:'', lon0:115, lon1:126.5, lat0:18, lat1:29, loading:null};
+function getCwaApiKey(){ return (lg('cwaKey')||'').trim(); }
+function setCwaApiKey(k){ ls('cwaKey', (k||'').trim()); }
+function cwaUrl(id){
+  const key=getCwaApiKey();
+  if(!key) throw new Error('Немає ключа CWA');
+  return 'https://opendata.cwa.gov.tw/fileapi/v1/opendataapi/'+id+'?Authorization='+encodeURIComponent(key)+'&downloadType=WEB&format=JSON';
+}
+// Легка перевірка ключа (1 КБ)
+async function cwaFetchMeta(){
+  const resp=await fetch(cwaUrl(CWA_META_ID));
+  if(!resp.ok) throw new Error('HTTP '+resp.status);
+  const data=await resp.json();
+  const ds=data.cwaopendata.dataset;
+  const ps=ds.datasetInfo.parameterSet;
+  const lon=String(ps.LongitudeRange).split('-').map(parseFloat);
+  const lat=String(ps.LatitudeRange).split('-').map(parseFloat);
+  return { dt:String(ds.DateTime), lon0:lon[0], lon1:lon[1], lat0:lat[0], lat1:lat[1] };
+}
+// dBZ → [r,g,b,alpha 0..255] у палітрі прогнозу, або null
+function cwaColor(dbz){
+  if(!(dbz>=CWA_MIN_DBZ)) return null;
+  const mm=Math.pow(Math.pow(10, dbz/10)/200, 0.625);
+  if(mm<0.5) return [52,152,219,128];
+  if(mm<2)   return [46,204,113,153];
+  if(mm<6)   return [241,196,15,173];
+  return [231,76,60,192];
+}
+// 05.10.2026: РАДАР «ЗАРАЗ» ТЕПЕР М'ЯКИЙ, ЯК ПРОГНОЗ. Раніше кожна клітинка сітки (≈1.3 км) фарбувалась одним із 4 плоских кольорів →
+// жорсткі «піксельні» грані й горизонтальні шви від смуг. Тепер: (1) дощ у мм/год по клітинках → (2) розмиття поля (4 проходи box 3×3 ≈ гаусс)
+// → (3) безперервна палітра (колір і прозорість плавно ростуть з інтенсивністю, ті самі кольори, що в прогнозу, пік прозорості ≈0.6 як у прогнозу)
+// → (4) перепроєкція рядків у Меркатор-Y, щоб на екран малювати ОДНИМ drawImage (без смуг і швів).
+function cwaBlurField(src, nx, ny, passes){
+  let a=src, b=new Float32Array(nx*ny);
+  for(let p=0;p<passes;p++){
+    for(let j=0;j<ny;j++){ // по горизонталі
+      const o=j*nx;
+      for(let i=0;i<nx;i++){
+        const l=a[o+(i>0?i-1:0)], c=a[o+i], r=a[o+(i<nx-1?i+1:nx-1)];
+        b[o+i]=(l+c+r)/3;
+      }
+    }
+    for(let j=0;j<ny;j++){ // по вертикалі
+      const jm=(j>0?j-1:0)*nx, jc=j*nx, jp=(j<ny-1?j+1:ny-1)*nx;
+      for(let i=0;i<nx;i++) a[jc+i]=(b[jm+i]+b[jc+i]+b[jp+i])/3;
+    }
+  }
+  return a;
+}
+const CWA_SOFT_STOPS=[ // [мм/год, r,g,b, alpha 0..1]
+  [0.02, 52,152,219, 0.00],
+  [0.20, 52,152,219, 0.38],
+  [0.50, 52,152,219, 0.55],
+  [1.00, 46,204,113, 0.55],
+  [2.00, 46,204,113, 0.55],
+  [3.50, 241,196,15, 0.58],
+  [6.00, 241,196,15, 0.60],
+  [9.00, 231,76,60, 0.62]
+];
+function cwaSoftColor(mm, out){
+  const S=CWA_SOFT_STOPS;
+  if(!(mm>S[0][0])){ out[3]=0; return; }
+  if(mm>=S[S.length-1][0]){ const e=S[S.length-1]; out[0]=e[1]; out[1]=e[2]; out[2]=e[3]; out[3]=e[4]*255; return; }
+  let k=1; while(k<S.length-1 && mm>S[k][0]) k++;
+  const p=S[k-1], q=S[k], t=(mm-p[0])/(q[0]-p[0]);
+  out[0]=p[1]+(q[1]-p[1])*t; out[1]=p[2]+(q[2]-p[2])*t; out[2]=p[3]+(q[3]-p[3])*t; out[3]=(p[4]+(q[4]-p[4])*t)*255;
+}
+function cwaBuildCanvas(){
+  const nx=CWA.nx, ny=CWA.ny, vals=CWA.vals;
+  if(!vals) return;
+  let f=new Float32Array(nx*ny);
+  for(let q=0;q<f.length;q++){
+    const v=vals[q];
+    f[q]=(v>=CWA_MIN_DBZ) ? Math.min(30, Math.pow(Math.pow(10, v/10)/200, 0.625)) : 0;
+  }
+  f=cwaBlurField(f, nx, ny, 4);
+  const MH=ny, lat0=CWA.lat0, lat1=CWA.lat1;
+  const mer=function(la){ return Math.log(Math.tan(Math.PI/4+la*Math.PI/360)); };
+  const mTop=mer(lat1), mBot=mer(lat0);
+  const c=document.createElement('canvas');
+  c.width=nx; c.height=MH;
+  const ctx=c.getContext('2d');
+  const id=ctx.createImageData(nx, MH), d=id.data;
+  const col=[0,0,0,0];
+  for(let k=0;k<MH;k++){
+    const m=mTop-((k+0.5)/MH)*(mTop-mBot);
+    const lat=(2*Math.atan(Math.exp(m))-Math.PI/2)*180/Math.PI;
+    let jf=(lat-lat0)/(lat1-lat0)*ny-0.5; // індекс рядка від ПІВДНЯ
+    if(jf<0) jf=0; if(jf>ny-1) jf=ny-1;
+    const j0=Math.floor(jf), j1=Math.min(ny-1,j0+1), t=jf-j0;
+    const o0=j0*nx, o1=j1*nx;
+    for(let i=0;i<nx;i++){
+      const mm=f[o0+i]*(1-t)+f[o1+i]*t;
+      cwaSoftColor(mm, col);
+      if(col[3]<=0) continue;
+      const o=(k*nx+i)*4;
+      d[o]=col[0]; d[o+1]=col[1]; d[o+2]=col[2]; d[o+3]=col[3];
+    }
+  }
+  ctx.putImageData(id, 0, 0);
+  CWA.canvas=c;
+}
+// Значення в точці: {dbz, mm} або null (немає даних/поза сіткою), mm=0 якщо нижче порогу
+function cwaRainAt(lat, lon){
+  if(!CWA.vals) return null;
+  const i=Math.round((lon-CWA.lonS)/CWA.res);
+  const j=Math.round((lat-CWA.latS)/CWA.res);
+  if(i<0 || i>=CWA.nx || j<0 || j>=CWA.ny) return null;
+  const v=CWA.vals[j*CWA.nx+i];
+  if(v<=-900) return null;
+  const mm = v>=CWA_MIN_DBZ ? Math.pow(Math.pow(10, v/10)/200, 0.625) : 0;
+  return { dbz:v, mm:mm };
+}
+// ── 03.10.2026: діагностика, попередження на маршруті, автоперевірка орієнтації сітки
+const CWA_WARN_MM=0.5;           // від цієї інтенсивності (мм/год) вважаємо «дощ» для попередження
+const CWA_WARN_AHEAD_M=40000;    // дивимось уперед по маршруту на 40 км
+function cwaIntensityWord(mm){ return mm<2 ? 'слабкий' : (mm<6 ? 'помірний' : 'сильний'); }
+function cwaKmWord(n){
+  const a=n%100, b=n%10;
+  if(a>=11 && a<=14) return n+' кілометрів';
+  if(b===1) return n+' кілометр';
+  if(b>=2 && b<=4) return n+' кілометри';
+  return n+' кілометрів';
+}
+const CWA_DIRS=['на північ','на північний схід','на схід','на південний схід','на південь','на південний захід','на захід','на північний захід'];
+// Найближча клітинка з дощем (≥CWA_WARN_MM) від точки: {km, dir, mm} або null
+function cwaNearestRain(lat, lon){
+  if(!CWA.vals) return null;
+  const nx=CWA.nx, ny=CWA.ny;
+  const kx=Math.cos(lat*Math.PI/180)*111.32, ky=110.57;
+  let best=1e9, bi=-1, bj=-1, cnt=0;
+  for(let j=0;j<ny;j++){
+    const la = CWA.latS+j*CWA.res;
+    const dy=(la-lat)*ky;
+    for(let i=0;i<nx;i++){
+      const v=CWA.vals[j*nx+i];
+      if(v<19) continue; // ≈0.5 мм/год
+      cnt++;
+      const dx=(CWA.lonS+i*CWA.res-lon)*kx;
+      const dd=dx*dx+dy*dy;
+      if(dd<best){ best=dd; bi=i; bj=j; }
+    }
+  }
+  if(bi<0) return { none:true, count:0 };
+  const la = CWA.latS+bj*CWA.res, lo=CWA.lonS+bi*CWA.res;
+  const ang=(Math.atan2((lo-lon)*kx, (la-lat)*ky)*180/Math.PI+360)%360;
+  const v=CWA.vals[bj*nx+bi];
+  return { km:Math.sqrt(best), dir:CWA_DIRS[Math.round(ang/45)%8], mm:Math.pow(Math.pow(10,v/10)/200,0.625), count:cnt };
+}
+// Скан маршруту вперед від поточного прогресу
+function cwaScanRoute(){
+  if(!CWA.vals || !mapRouteLatLngs || mapRouteLatLngs.length<2) return null;
+  const i0=Math.max(0, navProgressIndex);
+  let dist=0, lastSample=-1e9, first=null, maxMm=0, lastRainAt=0;
+  for(let i=i0;i<mapRouteLatLngs.length;i++){
+    if(i>i0) dist+=haversineM(mapRouteLatLngs[i-1][0], mapRouteLatLngs[i-1][1], mapRouteLatLngs[i][0], mapRouteLatLngs[i][1]);
+    if(dist>CWA_WARN_AHEAD_M) break;
+    if(dist-lastSample<250 && i!==i0) continue;
+    lastSample=dist;
+    const r=cwaRainAt(mapRouteLatLngs[i][0], mapRouteLatLngs[i][1]);
+    if(r && r.mm>=CWA_WARN_MM){
+      if(!first) first={km:dist/1000, mm:r.mm};
+      if(dist-first.km*1000<=3000 && r.mm>maxMm) maxMm=r.mm; // найсильніше в перших 3 км зони дощу
+      lastRainAt=dist;
+    } else if(first && dist-lastRainAt>2000){ break; }
+  }
+  if(!first) return null;
+  return { km:first.km, mm:Math.max(first.mm, maxMm) };
+}
+const CWA_WARN={state:'clear', t:0, a5:false};
+const NEAR_RADIUS_KM=10;
+const CWA_NEAR={band:0, t:0}; // band: 0 — чисто, 1 — дощ ≤10 км, 2 — ≤3 км, 3 — у зоні дощу
+function cwaWarnNear(){
+  if(_lastLat==null || _lastLon==null) return;
+  const here=cwaRainAt(_lastLat, _lastLon);
+  let km=null, dir='', mm=0;
+  if(here && here.mm>=CWA_WARN_MM){ km=0; mm=here.mm; }
+  else {
+    const nr=cwaNearestRain(_lastLat, _lastLon);
+    if(nr && !nr.none && nr.km<=NEAR_RADIUS_KM){ km=nr.km; dir=nr.dir; mm=nr.mm; }
+  }
+  const now=Date.now();
+  if(km===null){ CWA_NEAR.band=0; return; }
+  const band = km<0.7 ? 3 : (km<=3 ? 2 : 1);
+  if(band>CWA_NEAR.band || now-CWA_NEAR.t>15*60*1000 || CWA_NEAR.band===0){
+    CWA_NEAR.band=band; CWA_NEAR.t=now;
+    const word=cwaIntensityWord(mm);
+    const m = band===3 ? 'Ви в зоні дощу, '+word : 'Поблизу дощ, '+cwaKmWord(Math.max(1, Math.round(km)))+' '+dir+', '+word;
+    wxSay('🌧 '+m, m, {kind:'rain', km:km, route:0, sub:word});
+  } else CWA_NEAR.band=band;
+}
+function cwaWarnRoute(){
+  if(!MapCfg.nowEnabled || !CWA.vals) return;
+  wxMarkChecked('rain');
+  if(!mapRouteLatLngs || mapRouteLatLngs.length<2){ cwaWarnNear(); return; }
+  const r=cwaScanRoute();
+  const now=Date.now();
+  // 08.10.2026: на маршруті ТАКЕ Ж оповіщення в радіусі 10 км, як без маршруту — коли попереду по маршруту дощу немає (або він далі 10 км),
+  // але дощ поряд збоку/позаду. Якщо дощ на маршруті ближче 10 км — говорить маршрутне попередження (без дубля).
+  if(!r || r.km>NEAR_RADIUS_KM) cwaWarnNear(); else { CWA_NEAR.band=3; CWA_NEAR.t=now; }
+  if(!r){ CWA_WARN.state='clear'; CWA_WARN.a5=false; return; }
+  const word=cwaIntensityWord(r.mm);
+  if(r.km<0.7){
+    if(CWA_WARN.state!=='in'){ CWA_WARN.state='in'; const m='Дощ на маршруті, '+word; wxSay('🌧 '+m, m, {kind:'rain', km:0, route:1, sub:word}); }
+    return;
+  }
+  const km=Math.max(1, Math.round(r.km));
+  if(CWA_WARN.state!=='ahead' || now-CWA_WARN.t>15*60*1000){
+    CWA_WARN.state='ahead'; CWA_WARN.t=now; CWA_WARN.a5=(r.km<=5);
+    const m='Попереду дощ через '+cwaKmWord(km)+', '+word;
+    wxSay('🌧 '+m, m, {kind:'rain', km:r.km, route:1, sub:word});
+  } else if(r.km<=5 && !CWA_WARN.a5){
+    CWA_WARN.a5=true;
+    const m='Дощ через '+cwaKmWord(km)+', '+word;
+    wxSay('🌧 '+m, m, {kind:'rain', km:r.km, route:1, sub:word});
+  }
+}
+const CWA_PAL=[[0,200,255,5],[0,100,255,9],[0,30,255,13],[0,255,0,17],[0,210,0,20],[0,160,0,24],[255,255,0,30],[255,210,0,34],[255,150,0,38],[255,70,0,42],[255,20,0,45],[219,0,0,48]];
+function cwaDecodeDbz(r,g,b){
+  let bd=1e18, bv=0;
+  for(let q=0;q<CWA_PAL.length-1;q++){
+    const A=CWA_PAL[q], B=CWA_PAL[q+1];
+    const vx=B[0]-A[0], vy=B[1]-A[1], vz=B[2]-A[2];
+    const wx=r-A[0], wy=g-A[1], wz=b-A[2];
+    const ll=vx*vx+vy*vy+vz*vz;
+    let t=ll>0 ? (wx*vx+wy*vy+wz*vz)/ll : 0;
+    if(t<0) t=0; else if(t>1) t=1;
+    const dx=wx-t*vx, dy=wy-t*vy, dz=wz-t*vz, dd=dx*dx+dy*dy+dz*dz;
+    if(dd<bd){ bd=dd; bv=A[3]+(B[3]-A[3])*t; }
+  }
+  return bv;
+}
+async function cwaLoadPngCore(){
+  // 1) легкий запит метаданих (1 КБ): час, межі, посилання на картинку
+  const ctl0=(typeof AbortController!=='undefined') ? new AbortController() : null;
+  const tm0=ctl0 ? setTimeout(function(){ ctl0.abort(); }, 30000) : null;
+  let resp;
+  try{ resp=await fetch(cwaUrl(CWA_PNG_ID), ctl0 ? {signal:ctl0.signal} : undefined); }
+  finally { if(tm0) clearTimeout(tm0); }
+  if(!resp.ok) throw new Error('PNG meta HTTP '+resp.status);
+  const meta=await resp.json();
+  const ds=meta.cwaopendata.dataset;
+  const dt=String(ds.DateTime || '');
+  const url=ds.resource && ds.resource.ProductURL;
+  if(!url) throw new Error('PNG: немає ProductURL');
+  if(CWA.src==='png' && CWA.vals && CWA.dt===dt) return false; // той самий кадр — нічого не качаємо
+  const ps=(ds.datasetInfo && ds.datasetInfo.parameterSet) || {};
+  const lonR=String(ps.LongitudeRange||'118.0-124.0').split('-').map(parseFloat);
+  const latR=String(ps.LatitudeRange||'20.5-26.5').split('-').map(parseFloat);
+  const lon0=lonR[0], lon1=lonR[1], lat0=latR[0], lat1=latR[1];
+  if(!(lon1>lon0 && lat1>lat0)) throw new Error('PNG: хибні межі');
+  // 2) сама картинка (≈150 КБ)
+  const ctl=(typeof AbortController!=='undefined') ? new AbortController() : null;
+  const tm=ctl ? setTimeout(function(){ ctl.abort(); }, 45000) : null;
+  let blob;
+  try{
+    const r2=await fetch(url+'?_='+Date.now(), ctl ? {signal:ctl.signal} : undefined);
+    if(!r2.ok) throw new Error('PNG HTTP '+r2.status);
+    blob=await r2.blob();
+  } finally { if(tm) clearTimeout(tm); }
+  const objUrl=URL.createObjectURL(blob);
+  let im;
+  try{
+    im=await new Promise(function(res,rej){ const i=new Image(); i.onload=function(){ res(i); }; i.onerror=function(){ rej(new Error('PNG не декодується')); }; i.src=objUrl; });
+  } finally { URL.revokeObjectURL(objUrl); }
+  // 3) зменшення БЕЗ згладжування до 1800 (пік пам'яті короткий), далі блоки 3×3 → клітинка 0.01° (≈1.1 км)
+  const N=1800, K=3, NC=N/K;
+  const cv=document.createElement('canvas'); cv.width=N; cv.height=N;
+  const cx=cv.getContext('2d', {willReadFrequently:true});
+  cx.imageSmoothingEnabled=false;
+  cx.drawImage(im, 0, 0, N, N);
+  im=null;
+  const px=cx.getImageData(0,0,N,N).data;
+  cv.width=0; cv.height=0;
+  const sumMm=new Float32Array(NC*NC);
+  const cache=new Map();
+  for(let y=0;y<N;y++){
+    const cy=(y/K)|0, row=y*N;
+    for(let x=0;x<N;x++){
+      const o=(row+x)*4;
+      if(px[o+3]<200) continue;
+      const r=px[o], g=px[o+1], b=px[o+2];
+      if(r+g+b<60) continue;                 // тіні/обрамлення чорним
+      if(r===0 && g===255 && b===255) continue; // чисто-блакитна рамка (на 95% над сухою сіткою)
+      const key=(r<<16)|(g<<8)|b;
+      let mm=cache.get(key);
+      if(mm===undefined){
+        const d=cwaDecodeDbz(r,g,b);
+        mm = d>=CWA_MIN_DBZ ? Math.pow(Math.pow(10, d/10)/200, 0.625) : 0;
+        cache.set(key, mm);
+      }
+      if(mm>0) sumMm[cy*NC+((x/K)|0)]+=mm;
+    }
+  }
+  const vals=new Float32Array(NC*NC);
+  vals.fill(-999);
+  const inv=1/(K*K);
+  for(let cy=0;cy<NC;cy++){
+    const j=NC-1-cy; // PNG зверху вниз = з півночі на південь; у CWA.vals рядки з ПІВДНЯ
+    for(let cxi=0;cxi<NC;cxi++){
+      const m=sumMm[cy*NC+cxi]*inv;
+      if(m>0.001) vals[j*NC+cxi]=10*Math.log10(200*Math.pow(m,1.6));
+    }
+  }
+  const resX=(lon1-lon0)/NC;
+  CWA.vals=vals; CWA.nx=NC; CWA.ny=NC; CWA.res=resX; CWA.lonS=lon0+resX/2; CWA.latS=lat0+(lat1-lat0)/NC/2; CWA.dt=dt;
+  CWA.lon0=lon0; CWA.lon1=lon1; CWA.lat0=lat0; CWA.lat1=lat1;
+  CWA.src='png'; CWA.pngBadUntil=0;
+  cwaBuildCanvas();
+  return true;
+}
+// Диспетчер: PNG (за замовчуванням) → при помилці на ПЕРШОМУ завантаженні падаємо на стару сітку (30 хв без повторних спроб PNG). Перемикач — Налаштування → Карта.
+function cwaLoadRadar(){
+  if(CWA.loading) return CWA.loading;
+  // 08.10.2026: лише PNG (O-A0058-006, ≈150 КБ). Стара сітка O-A0059-001 (≈9 МБ) і перемикач джерела видалені.
+  CWA.loading=(async function(){
+    try{ return await cwaLoadPngCore(); }
+    finally { CWA.loading=null; }
+  })();
+  return CWA.loading;
+}
+function cwaTimeLabel(){
+  const m=/T(\d\d:\d\d)/.exec(CWA.dt||'');
+  return m ? m[1] : '';
+}
+
+/* ── перенесено з VRacer без змін: x_wind.js ── */
+const WIND_ID_10='O-A0003-001', WIND_ID_H='O-A0001-001';
+const WIND_REFRESH_MS=10*60*1000, WIND_H_REFRESH_MS=25*60*1000;
+const WIND_R_KM=15;                 // далі цього від станцій вітер не оцінюємо (немає даних — не малюємо і не лякаємо)
+const WIND_G_LEVELS=[10,15,20];     // пороги поривів, м/с: «поривчастий» / «сильні» / «небезпечні»
+const WIND_STOPS=[[1.5,60,150,220,0.00],[3,60,150,220,0.28],[5,46,204,113,0.42],[8,241,196,15,0.50],[12,243,120,30,0.55],[16,231,76,60,0.60],[22,170,50,200,0.62]];
+const WIND={ann:false, s10:null, sH:null, t10:'', hAt:0, st:[], idx:null, loading:null, warnTimer:null};
+const WIND_WARN={state:'clear', level:0, t:0, a5:false};
+function windNum(v){ const n=parseFloat(v); return (isNaN(n) || n<=-90) ? null : n; }
+function windParse(data){
+  const recs=(data && data.records) ? data.records : {};
+  const arr=recs.Station || recs.station || [];
+  const out=[];
+  arr.forEach(function(stn){
+    const we=stn.WeatherElement || stn.weatherElement || {};
+    let lat=NaN, lon=NaN;
+    const cs=(stn.GeoInfo && stn.GeoInfo.Coordinates) ? stn.GeoInfo.Coordinates : [];
+    for(let q=0;q<cs.length;q++){ if(cs[q].CoordinateName==='WGS84'){ lat=parseFloat(cs[q].StationLatitude); lon=parseFloat(cs[q].StationLongitude); } }
+    if(isNaN(lat) && cs.length){ lat=parseFloat(cs[0].StationLatitude); lon=parseFloat(cs[0].StationLongitude); }
+    if(isNaN(lat) || isNaN(lon)) return;
+    const obs=(stn.ObsTime && stn.ObsTime.DateTime) ? stn.ObsTime.DateTime : '';
+    const obsMs=Date.parse(obs)||0;
+    const gi=we.GustInfo || {};
+    let gust=windNum(gi.PeakGustSpeed);
+    const gAt=(gi.Occurred_at && gi.Occurred_at.DateTime) ? Date.parse(gi.Occurred_at.DateTime) : 0;
+    if(gust!==null && gAt && obsMs && obsMs-gAt>3*3600*1000) gust=null; // застарілий пік (>3 год до спостереження) не беремо
+    const ws=windNum(we.WindSpeed), wd=windNum(we.WindDirection);
+    out.push({lat:lat, lon:lon, ws:(ws!==null && wd!==null) ? ws : null, wd:wd, gust:gust, obs:obs, obsMs:obsMs, name:stn.StationName||''});
+  });
+  return out;
+}
+async function windFetch(id){
+  const key=getCwaApiKey();
+  const ctl=(typeof AbortController!=='undefined') ? new AbortController() : null;
+  const tm=ctl ? setTimeout(function(){ ctl.abort(); }, 30000) : null;
+  try{
+    const resp=await fetch('https://opendata.cwa.gov.tw/api/v1/rest/datastore/'+encodeURIComponent(id)+'?Authorization='+encodeURIComponent(key)+'&format=JSON', ctl ? {signal:ctl.signal} : undefined);
+    if(!resp.ok) throw new Error('вітер '+id+': HTTP '+resp.status);
+    return await resp.json();
+  } finally { if(tm) clearTimeout(tm); }
+}
+function windMerge(){
+  const a=WIND.s10 || [], b=WIND.sH || [];
+  const list=[];
+  const keyOf=function(lat,lon){ return Math.floor(lat*10)+'_'+Math.floor(lon*10); };
+  const idx=new Map();
+  function add(s,h){
+    const o={lat:s.lat, lon:s.lon, ws:s.ws, wd:s.wd, gust:s.gust, h:h};
+    list.push(o);
+    const k=keyOf(s.lat,s.lon); let g=idx.get(k); if(!g){ g=[]; idx.set(k,g); } g.push(list.length-1);
+  }
+  a.forEach(function(s){ add(s,false); });
+  const n10=list.length;
+  // погодинні станції, що майже збігаються з 10-хвилинними (<1.2 км), не дублюємо — але їхні пориви можуть бути повнішими, тож приєднуємо порив, якщо в 10-хв його нема
+  b.forEach(function(s){
+    let dup=-1;
+    const bi=Math.floor(s.lat*10), bj=Math.floor(s.lon*10);
+    for(let di=-1;di<=1 && dup<0;di++) for(let dj=-1;dj<=1 && dup<0;dj++){
+      const g=idx.get((bi+di)+'_'+(bj+dj)); if(!g) continue;
+      for(let q=0;q<g.length;q++){ if(g[q]>=n10) continue; const o=list[g[q]]; const dx=(o.lon-s.lon)*100, dy=(o.lat-s.lat)*110; if(dx*dx+dy*dy<1.44){ dup=g[q]; break; } }
+    }
+    if(dup>=0){ if(list[dup].gust===null && s.gust!==null) list[dup].gust=s.gust; }
+    else add(s,true);
+  });
+  WIND.st=list; WIND.idx=idx;
+}
+// Завантаження: 10-хв набір щоразу, погодинний — не частіше за раз на ~25 хв. true — є нові дані.
+function windLoad(){
+  if(WIND.loading) return WIND.loading;
+  WIND.loading=(async function(){
+    try{
+      let changed=false;
+      // 08.10.2026: дані свіжіші за 9 хв (напр. після вимк/увімк кнопки) — мережу не чіпаємо
+      if(WIND.s10 && WIND.st.length && WIND.fetchAt && Date.now()-WIND.fetchAt < 9*60*1000) return false;
+      const d10=await windFetch(WIND_ID_10);
+      WIND.fetchAt=Date.now();
+      const p10=windParse(d10);
+      let t10=''; p10.forEach(function(p){ if(p.obs>t10) t10=p.obs; });
+      if(!WIND.s10 || WIND.t10!==t10){ WIND.s10=p10; WIND.t10=t10; changed=true; }
+      if(!WIND.sH || Date.now()-WIND.hAt>WIND_H_REFRESH_MS){
+        try{ const dH=await windFetch(WIND_ID_H); WIND.sH=windParse(dH); WIND.hAt=Date.now(); changed=true; }
+        catch(e){ console.warn('[wind] погодинні:', e); if(!WIND.sH) WIND.sH=[]; WIND.hAt=Date.now()-WIND_H_REFRESH_MS+5*60*1000; }
+      }
+      if(changed || !WIND.st.length) windMerge();
+      return changed;
+    } finally { WIND.loading=null; }
+  })();
+  return WIND.loading;
+}
+// Оцінка вітру в точці: зважене за 1/(d+1.5)² середнє зі станцій у радіусі WIND_R_KM (напрям — через u/v-компоненти).
+// Повертає {ws (м/с), u, v (куди дме), gust (м/с або null), dmin (км до найближчої станції)} або null.
+function windAt(lat, lon){
+  if(!WIND.idx) return null;
+  const kx=111.32*Math.cos(lat*Math.PI/180), ky=110.57;
+  const bi=Math.floor(lat*10), bj=Math.floor(lon*10);
+  let sw=0, su=0, sv=0, gw=0, gs=0, dmin=1e9, gnear=0;
+  for(let di=-2; di<=2; di++) for(let dj=-2; dj<=2; dj++){
+    const g=WIND.idx.get((bi+di)+'_'+(bj+dj)); if(!g) continue;
+    for(let q=0;q<g.length;q++){
+      const s=WIND.st[g[q]];
+      const dx=(s.lon-lon)*kx, dy=(s.lat-lat)*ky, d=Math.sqrt(dx*dx+dy*dy);
+      if(d>WIND_R_KM) continue;
+      if(d<dmin) dmin=d;
+      let w=1/((d+1.5)*(d+1.5)); if(s.h) w*=0.6;
+      if(s.ws!==null){ const a=s.wd*Math.PI/180; su+=w*(-s.ws*Math.sin(a)); sv+=w*(-s.ws*Math.cos(a)); sw+=w; }
+      if(s.gust!==null){ gs+=w*s.gust; gw+=w; if(d<=8 && s.gust>gnear) gnear=s.gust; }
+    }
+  }
+  if(!sw) return null;
+  const u=su/sw, v=sv/sw;
+  let gust=null;
+  if(gw>0) gust=Math.max(gs/gw, gnear*0.9); // осереднення згладжує піки, тож не опускаємось нижче 90% найсильнішого порива в межах 8 км
+  return {ws:Math.sqrt(u*u+v*v), u:u, v:v, gust:gust, dmin:dmin};
+}
+function windColor(ws, out){
+  const S=WIND_STOPS;
+  if(ws<=S[0][0]){ out[3]=0; return; }
+  if(ws>=S[S.length-1][0]){ const e=S[S.length-1]; out[0]=e[1]; out[1]=e[2]; out[2]=e[3]; out[3]=e[4]*255; return; }
+  let k=1; while(k<S.length-1 && ws>S[k][0]) k++;
+  const p=S[k-1], q=S[k], t=(ws-p[0])/(q[0]-p[0]);
+  out[0]=p[1]+(q[1]-p[1])*t; out[1]=p[2]+(q[2]-p[2])*t; out[2]=p[3]+(q[3]-p[3])*t; out[3]=(p[4]+(q[4]-p[4])*t)*255;
+}
+function windTimeLabel(){ const m=/T(\d\d:\d\d)/.exec(WIND.t10||''); return m ? m[1] : ''; }
+function windScanRoute(){
+  if(!WIND.st.length || !mapRouteLatLngs || mapRouteLatLngs.length<2) return null;
+  const i0=Math.max(0, navProgressIndex);
+  let dist=0, lastSample=-1e9, first=null, maxG=0, lastAt=0;
+  for(let i=i0;i<mapRouteLatLngs.length;i++){
+    if(i>i0) dist+=haversineM(mapRouteLatLngs[i-1][0], mapRouteLatLngs[i-1][1], mapRouteLatLngs[i][0], mapRouteLatLngs[i][1]);
+    if(dist>CWA_WARN_AHEAD_M) break;
+    if(dist-lastSample<1000 && i!==i0) continue;
+    lastSample=dist;
+    const wv=windAt(mapRouteLatLngs[i][0], mapRouteLatLngs[i][1]);
+    if(wv && wv.gust!==null && wv.gust>=WIND_G_LEVELS[0]){
+      if(!first) first={km:dist/1000, g:wv.gust};
+      if(dist-first.km*1000<=5000 && wv.gust>maxG) maxG=wv.gust;
+      lastAt=dist;
+    } else if(first && dist-lastAt>3000){ break; }
+  }
+  if(!first) return null;
+  const g=Math.max(first.g, maxG);
+  let level=1; if(g>=WIND_G_LEVELS[2]) level=3; else if(g>=WIND_G_LEVELS[1]) level=2;
+  return {km:first.km, g:g, level:level};
+}
+function windLevelWord(l){ return l>=3 ? 'небезпечні пориви вітру' : (l===2 ? 'сильні пориви вітру' : 'поривчастий вітер'); }
+// 07.10.2026: БЕЗ маршруту — пориви вітру в радіусі 10 км (кільця 0/3/6/10 км × 8 напрямків)
+const WIND_NEAR={level:0, t:0};
+function windScanNear(){
+  const la0=_lastLat, lo0=_lastLon, kx=111.32*Math.cos(la0*Math.PI/180), ky=110.57;
+  let first=null, maxG=0;
+  const rings=[0,3,6,10];
+  for(let r=0;r<rings.length;r++){
+    const d=rings[r], nb=d===0 ? 1 : 8;
+    for(let b=0;b<nb;b++){
+      const a=b*Math.PI/4;
+      const wv=windAt(la0+Math.cos(a)*d/ky, lo0+Math.sin(a)*d/kx);
+      if(wv && wv.gust!==null && wv.gust>=WIND_G_LEVELS[0]){
+        if(!first) first={km:d, dir:(d===0 ? '' : CWA_DIRS[b])}; // b=0 — північ, b=2 — схід (кут від півночі за годинниковою)
+        if(wv.gust>maxG) maxG=wv.gust;
+      }
+    }
+  }
+  if(!first) return null;
+  let level=1; if(maxG>=WIND_G_LEVELS[2]) level=3; else if(maxG>=WIND_G_LEVELS[1]) level=2;
+  return {km:first.km, dir:first.dir, g:maxG, level:level};
+}
+function windWarnNear(){
+  if(_lastLat==null || _lastLon==null) return;
+  const r=windScanNear(), now=Date.now();
+  if(!r){ WIND_NEAR.level=0; return; }
+  if(r.level>WIND_NEAR.level || WIND_NEAR.level===0 || now-WIND_NEAR.t>15*60*1000){
+    WIND_NEAR.level=r.level; WIND_NEAR.t=now;
+    const gtxt='до '+Math.round(r.g)+' метрів на секунду';
+    const m = r.km===0 ? 'Біля вас '+windLevelWord(r.level)+', '+gtxt : 'Поблизу '+windLevelWord(r.level)+', '+cwaKmWord(r.km)+' '+r.dir+', '+gtxt;
+    wxSay('💨 '+m, m, {kind:'wind', km:r.km, route:0, sub:'до '+Math.round(r.g)+' м/с'});
+  } else WIND_NEAR.level=r.level;
+}
+function windWarnRoute(){
+  if(!MapCfg.windEnabled || !WIND.st.length) return;
+  wxMarkChecked('wind');
+  if(!mapRouteLatLngs || mapRouteLatLngs.length<2){ windWarnNear(); return; }
+  const r=windScanRoute();
+  const now=Date.now();
+  // 08.10.2026: те саме для вітру — радіус 10 км навколо, якщо по маршруту попереду пориву немає або він далі 10 км
+  if(!r || r.km>NEAR_RADIUS_KM) windWarnNear(); else { WIND_NEAR.level=3; WIND_NEAR.t=now; }
+  if(!r){ WIND_WARN.state='clear'; WIND_WARN.level=0; WIND_WARN.a5=false; return; }
+  const gtxt='до '+Math.round(r.g)+' метрів на секунду';
+  if(r.km<0.7){
+    if(WIND_WARN.state!=='in' || r.level>WIND_WARN.level){ WIND_WARN.state='in'; WIND_WARN.level=r.level; const m='На маршруті '+windLevelWord(r.level)+', '+gtxt; wxSay('💨 '+m, m, {kind:'wind', km:0, route:1, sub:'до '+Math.round(r.g)+' м/с'}); }
+    return;
+  }
+  const km=Math.max(1, Math.round(r.km));
+  if(WIND_WARN.state!=='ahead' || r.level>WIND_WARN.level || now-WIND_WARN.t>15*60*1000){
+    WIND_WARN.state='ahead'; WIND_WARN.level=r.level; WIND_WARN.t=now; WIND_WARN.a5=(r.km<=5);
+    const m='Попереду '+windLevelWord(r.level)+' через '+cwaKmWord(km)+', '+gtxt;
+    wxSay('💨 '+m, m, {kind:'wind', km:r.km, route:1, sub:'до '+Math.round(r.g)+' м/с'});
+  } else if(r.km<=5 && !WIND_WARN.a5){
+    WIND_WARN.a5=true;
+    const m=windLevelWord(r.level)+' через '+cwaKmWord(km)+', '+gtxt;
+    wxSay('💨 '+m, m, {kind:'wind', km:r.km, route:1, sub:'до '+Math.round(r.g)+' м/с'});
+  }
+}
+
+/* ═══════════ vTrip · погода: малювання, кнопки «Дощ / Прогноз / Вітер», оновлення ═══════════
+   Алгоритми вище (радар CWA PNG, станції вітру, Open-Meteo, пороги й фрази попереджень) перенесено з VRacer БЕЗ змін.
+   Нижче — лише шар малювання й керування для вертикального інтерфейсу. */
+['wxFc','wxRadar','wxWind'].forEach((n,i)=>{ const p=map.createPane(n); p.style.zIndex=341+i; p.classList.add('wxpane'); });
+function mkCv(pane){ const c=document.createElement('canvas'); c.className='wxcv'; c.style.display='none'; map.getPane(pane).appendChild(c); return c; }
+const cvFc=mkCv('wxFc'), cvRain=mkCv('wxRadar'), cvWind=mkCv('wxWind');
+function sizeCv(cv){
+  const s=map.getSize(), w=Math.min(1200,Math.max(1,Math.round(s.x))), h=Math.min(1200,Math.max(1,Math.round(s.y)));
+  if(cv.width!==w || cv.height!==h){ cv.width=w; cv.height=h; }
+  cv.style.width=w+'px'; cv.style.height=h+'px';
+  L.DomUtil.setPosition(cv,map.containerPointToLayerPoint([0,0]));   // канвас завжди приклеєний до лівого верхнього кута екрана
+  return {w:w,h:h};
+}
+function setBtn(id,on){ $(id).classList.toggle('on',!!on); }
+
+/* ── радар «Дощ» ── */
+function drawRain(){
+  const cv=cvRain;
+  if(!CFG.radar || !CWA.canvas){ cv.style.display='none'; return; }
+  const sz=sizeCv(cv), w=sz.w, h=sz.h; cv.style.display='block';
+  const ctx=cv.getContext('2d'); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,w,h);
+  ctx.imageSmoothingEnabled=true; try{ctx.imageSmoothingQuality='high';}catch(e){}
+  const SW=CWA.canvas.width, SH=CWA.canvas.height;
+  const pTL=map.latLngToContainerPoint([CWA.lat1,CWA.lon0]), pBR=map.latLngToContainerPoint([CWA.lat0,CWA.lon1]);
+  const dx=pTL.x, dw=pBR.x-pTL.x, dy=pTL.y, dh=pBR.y-pTL.y; if(dw<=0||dh<=0) return;
+  const c0=Math.max(0,Math.floor(((0-dx)/dw)*SW)-1), c1=Math.min(SW,Math.ceil(((w-dx)/dw)*SW)+1);
+  const r0=Math.max(0,Math.floor(((0-dy)/dh)*SH)-1), r1=Math.min(SH,Math.ceil(((h-dy)/dh)*SH)+1);
+  if(c1<=c0||r1<=r0) return;
+  ctx.drawImage(CWA.canvas,c0,r0,c1-c0,r1-r0,dx+(c0/SW)*dw,dy+(r0/SH)*dh,((c1-c0)/SW)*dw,((r1-r0)/SH)*dh);
+}
+let _rainTimer=null;
+async function rainSet(on){
+  CFG.radar=on; saveCfg(); setBtn('bRain',on); clearInterval(_rainTimer);
+  CWA_NEAR.band=0; CWA_NEAR.t=0; CWA_WARN.state='clear'; CWA_WARN.t=0; CWA_WARN.a5=false;
+  if(!on){ cvRain.style.display='none'; $('bRainL').textContent='Дощ'; CWA.canvas=null; CWA.vals=null; CWA.dt=''; return; }
+  if(!getCwaApiKey()){ sht('ℹ️ Радар: введіть ключ CWA в Налаштуваннях'); CFG.radar=false; saveCfg(); setBtn('bRain',false); return; }
+  try{
+    sht('📡 Завантажую радар CWA (~150 КБ)…'); await cwaLoadRadar(); if(!CFG.radar) return;
+    dbgEv('радар CWA: '+cwaTimeLabel()); drawRain(); $('bRainL').textContent=cwaTimeLabel()||'Дощ';
+    if(_lastLat!=null){
+      const r=cwaRainAt(_lastLat,_lastLon);
+      if(r && r.mm>0) sht('📡 Біля вас дощ: ≈'+(r.mm<10?r.mm.toFixed(1):Math.round(r.mm))+' мм/год');
+      else { const nr=cwaNearestRain(_lastLat,_lastLon); sht(!nr||nr.none ? '📡 Дощу в зоні покриття немає' : '📡 Дощу біля вас немає. Найближчий: '+Math.round(nr.km)+' км '+nr.dir); }
+    }
+    const c=map.getCenter(); if(c.lat<CWA.lat0||c.lat>CWA.lat1||c.lng<CWA.lon0||c.lng>CWA.lon1) sht('ℹ️ Тут немає даних радара CWA (поза зоною Тайваню)');
+    cwaWarnRoute();
+  }catch(e){ dbgEv('радар: '+e.message); sht('⚠️ Радар CWA: '+(e&&e.message||'помилка')); }
+  _rainTimer=setInterval(async()=>{ if(!CFG.radar) return; try{ if(await cwaLoadRadar()){ wxRedraw(); cwaWarnRoute(); $('bRainL').textContent=cwaTimeLabel()||'Дощ'; } }catch(e){ dbgEv('оновлення радара: '+e.message); } },CWA_REFRESH_MS);
+}
+
+/* ── вітер (станції CWA) ── */
+let _windOc=null;
+function drawWind(){
+  const cv=cvWind;
+  if(!CFG.wind || !WIND.st.length){ cv.style.display='none'; return; }
+  const sz=sizeCv(cv), w=sz.w, h=sz.h; cv.style.display='block';
+  const ctx=cv.getContext('2d'); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,w,h);
+  const CELL=14, gw=Math.ceil(w/CELL)+1, gh=Math.ceil(h/CELL)+1;
+  if(!_windOc) _windOc=document.createElement('canvas'); _windOc.width=gw; _windOc.height=gh;
+  const octx=_windOc.getContext('2d'), id=octx.createImageData(gw,gh), d=id.data, col=[0,0,0,0];
+  for(let j=0;j<gh;j++) for(let i=0;i<gw;i++){
+    const ll=map.containerPointToLatLng([i*CELL,j*CELL]), wv=windAt(ll.lat,ll.lng); if(!wv) continue;
+    windColor(wv.ws,col); let a=col[3];
+    if(wv.dmin>6) a*=Math.max(0,(WIND_R_KM-wv.dmin)/(WIND_R_KM-6));
+    if(a<=0) continue; const o=(j*gw+i)*4; d[o]=col[0]; d[o+1]=col[1]; d[o+2]=col[2]; d[o+3]=a;
+  }
+  octx.putImageData(id,0,0); ctx.imageSmoothingEnabled=true; try{ctx.imageSmoothingQuality='high';}catch(e){}
+  ctx.drawImage(_windOc,0,0,gw,gh,0,0,gw*CELL,gh*CELL);
+}
+let _windTimer=null;
+async function windSet(on){
+  CFG.wind=on; saveCfg(); setBtn('bWind',on); clearInterval(_windTimer);
+  WIND_NEAR.level=0; WIND_NEAR.t=0; WIND_WARN.state='clear'; WIND_WARN.level=0; WIND_WARN.t=0; WIND_WARN.a5=false;
+  if(!on){ cvWind.style.display='none'; $('bWindL').textContent='Вітер'; return; }
+  if(!getCwaApiKey()){ sht('ℹ️ Вітер: введіть ключ CWA в Налаштуваннях'); CFG.wind=false; saveCfg(); setBtn('bWind',false); return; }
+  try{
+    if(!WIND.st.length) sht('💨 Завантажую вітер зі станцій CWA (~1 МБ)…');
+    await windLoad(); if(!CFG.wind) return; drawWind(); $('bWindL').textContent=windTimeLabel()||'Вітер';
+    if(_lastLat!=null){
+      const wv=windAt(_lastLat,_lastLon);
+      if(wv){ const from=(Math.atan2(-wv.u,-wv.v)*180/Math.PI+360)%360;
+        sht('💨 Біля вас вітер ≈'+wv.ws.toFixed(1)+' м/с, з '+Math.round(from)+'°'+(wv.gust!==null?', пориви за годину до '+Math.round(wv.gust)+' м/с':'')); }
+      else sht('💨 Станцій CWA поблизу немає (поза зоною Тайваню)');
+    }
+    windWarnRoute();
+  }catch(e){ dbgEv('вітер: '+e.message); sht('⚠️ Вітер CWA: '+(e&&e.message||'помилка')); }
+  _windTimer=setInterval(async()=>{ if(!CFG.wind) return; try{ if(await windLoad()){ wxRedraw(); windWarnRoute(); $('bWindL').textContent=windTimeLabel()||'Вітер'; } }catch(e){ dbgEv('оновлення вітру: '+e.message); } },WIND_REFRESH_MS);
+}
+
+/* ── прогноз опадів (Open-Meteo, без ключа) ── */
+const FC={frames:null,idx:0,timer:null,center:null,at:0,playing:false,panT:null};
+function drawFc(){
+  const cv=cvFc;
+  if(!CFG.fc || !FC.frames || !FC.frames.length){ cv.style.display='none'; return; }
+  const sz=sizeCv(cv), w=sz.w, h=sz.h; cv.style.display='block';
+  const ctx=cv.getContext('2d'); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,w,h);
+  const frame=FC.frames[FC.idx]; if(!frame) return;
+  const p0=map.latLngToContainerPoint([frame.points[0].lat,frame.points[0].lon]);
+  const p1=map.latLngToContainerPoint([frame.points[0].lat,frame.points[0].lon+(frame.points[1]?(frame.points[1].lon-frame.points[0].lon):0.01)]);
+  const radius=Math.max(20,Math.hypot(p1.x-p0.x,p1.y-p0.y))*1.4;
+  frame.points.map(pt=>({pt:pt,color:precipColor(pt.mm)})).filter(x=>x.color).sort((a,b)=>a.pt.mm-b.pt.mm).forEach(x=>{
+    const c=map.latLngToContainerPoint([x.pt.lat,x.pt.lon]), g=ctx.createRadialGradient(c.x,c.y,0,c.x,c.y,radius);
+    g.addColorStop(0,'rgba('+x.color.join(',')+',0.55)'); g.addColorStop(1,'rgba('+x.color.join(',')+',0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(c.x,c.y,radius,0,Math.PI*2); ctx.fill();
+  });
+}
+async function fcLoad(){
+  const c=map.getCenter();
+  try{
+    const frames=await fetchPrecipForecast(buildForecastGrid(c.lat,c.lng));
+    FC.frames=frames; FC.center={lat:c.lat,lon:c.lng}; FC.at=Date.now(); FC.idx=Math.min(FC.idx,frames.length-1);
+    $('fcR').max=frames.length-1; fcShow(); dbgEv('прогноз: '+frames.length+' кадрів');
+  }catch(e){ dbgEv('прогноз: '+e.message); sht('⚠️ Прогноз: '+(e&&e.message||'помилка')); }
+}
+function fcShow(){
+  const f=FC.frames&&FC.frames[FC.idx];
+  $('fcT').textContent=f?fmtWxTime(f.time):'--:--'; $('fcR').value=FC.idx; $('bFcL').textContent=f?fmtWxTime(f.time):'Прогноз'; wxRedraw();
+}
+function fcPlay(on){
+  clearInterval(FC.timer); FC.playing=on; $('fcPlay').textContent=on?'⏸':'▶';
+  if(on) FC.timer=setInterval(()=>{ if(!FC.frames) return; FC.idx=(FC.idx+1)%FC.frames.length; fcShow(); },WX_FRAME_MS);
+}
+async function fcSet(on){
+  CFG.fc=on; saveCfg(); setBtn('bFc',on); $('fcbar').hidden=!on;
+  if(!on){ fcPlay(false); cvFc.style.display='none'; FC.frames=null; $('bFcL').textContent='Прогноз'; return; }
+  sht('☁️ Завантажую прогноз опадів…'); await fcLoad(); if(CFG.fc) fcPlay(true);
+}
+map.on('moveend',()=>{
+  if(!CFG.fc) return; clearTimeout(FC.panT);
+  FC.panT=setTimeout(()=>{ const c=map.getCenter();
+    if(!FC.center || haversineM(c.lat,c.lng,FC.center.lat,FC.center.lon)>WX_RECENTER_KM*1000 || Date.now()-FC.at>WX_REFETCH_MS) fcLoad(); },WX_PAN_DEBOUNCE_MS);
+});
+
+/* ── перемальовування й перевірки ── */
+let _rq=0;
+function wxRedraw(){
+  if(_rq) return;
+  _rq=requestAnimationFrame(()=>{ _rq=0; if(document.hidden) return;
+    try{drawFc();}catch(e){} try{drawRain();}catch(e){} try{drawWind();}catch(e){} });
+}
+map.on('move zoom moveend zoomend resize',wxRedraw);
+function wxTick(){   // кожні 5 км шляху (як у VRacer)
+  if(CFG.radar && CWA.vals && wxCheckDue('rain')) cwaWarnRoute();
+  if(CFG.wind && WIND.st.length && wxCheckDue('wind')) windWarnRoute();
+}
+
+/* ═══════════ vTrip · веломаршрут і навігація ═══════════
+   Побудова: OpenRouteService (cycling-*) → запасний TomTom (travelMode=bicycle). Голосові підказки українською формуємо самі за типом маневру.
+   Майбутнє: сюди ж додамо відрізки громадського транспорту (TDX) як окремі «ноги» маршруту. */
+const RT={start:null,via:[],fin:null,coords:[],cum:[],steps:[],dist:0,dur:0,src:'',line:null,casing:null,pins:[]};
+const navState={active:false,idx:0,off:false,said:{},offSaid:0,arrived:false};
+
+const ORS_TYPES=['left','right','sharp_left','sharp_right','slight_left','slight_right','straight','roundabout','roundabout_exit','uturn','goal','depart','keep_left','keep_right'];
+const TURN_UK={left:'поверніть ліворуч',right:'поверніть праворуч',sharp_left:'різко поверніть ліворуч',sharp_right:'різко поверніть праворуч',
+  slight_left:'візьміть трохи ліворуч',slight_right:'візьміть трохи праворуч',keep_left:'тримайтеся лівіше',keep_right:'тримайтеся правіше',
+  straight:'їдьте прямо',roundabout:"в'їдьте на кільце",roundabout_exit:'виїдьте з кільця',uturn:'розвернітеся',goal:'ви прибули до місця призначення',depart:'рушайте',via:'проміжна точка'};
+const TURN_ICON={left:'⬅',right:'➡',sharp_left:'↙',sharp_right:'↘',slight_left:'↖',slight_right:'↗',keep_left:'↖',keep_right:'↗',straight:'⬆',roundabout:'⟳',roundabout_exit:'⟳',uturn:'↩',goal:'🏁',depart:'▶',via:'◎'};
+function turnPhrase(s){
+  let t=TURN_UK[s.type]||'їдьте прямо';
+  if(s.type==='roundabout' && s.exit) t='на кільці виїдьте на '+s.exit+'-й з\'їзд';
+  return t;
+}
+function distWords(m){
+  if(m>=950){ const km=Math.round(m/100)/10; return (km%1===0?km.toFixed(0):String(km).replace('.',','))+' '+(km===1?'кілометр':(km<5?'кілометри':'кілометрів')); }
+  const r=m>=150?Math.round(m/50)*50:Math.round(m/10)*10; return r+' метрів';
+}
+
+/* ── точки плану: довгий тап по карті ── */
+function closePtMenu(){ $('ptmenu').hidden=true; }
+function showPtMenu(ll,x,y){
+  const m=$('ptmenu'); m.innerHTML='';
+  const hd=document.createElement('div'); hd.className='hd'; hd.textContent=ll.lat.toFixed(5)+', '+ll.lng.toFixed(5); m.appendChild(hd);
+  [['🏁 Фініш тут','fin'],['➕ Через цю точку','via'],['🚩 Старт тут','start']].forEach(a=>{
+    const b=document.createElement('button'); b.textContent=a[0]; b.onclick=()=>{ closePtMenu(); setPoint(a[1],ll); }; m.appendChild(b); });
+  m.hidden=false;
+  const W=m.offsetWidth||190, H=m.offsetHeight||150;
+  m.style.left=Math.max(8,Math.min(innerWidth-W-8,x-W/2))+'px';
+  m.style.top=Math.max(8,(y+H+30>innerHeight)?y-H-20:y+14)+'px';
+  if(navigator.vibrate) try{navigator.vibrate(15);}catch(e){}
+}
+(function longPress(){
+  const el=map.getContainer(); let t=null,sx=0,sy=0;
+  const cancel=()=>{ if(t){ clearTimeout(t); t=null; } };
+  el.addEventListener('pointerdown',e=>{
+    if(!e.isPrimary){ cancel(); return; }
+    if(e.pointerType==='mouse' && e.button!==0) return;
+    closePtMenu(); sx=e.clientX; sy=e.clientY; cancel();
+    t=setTimeout(()=>{ t=null; const r=el.getBoundingClientRect(); showPtMenu(map.containerPointToLatLng([sx-r.left,sy-r.top]),sx,sy); },550);
+  },true);
+  el.addEventListener('pointermove',e=>{ if(t && Math.hypot(e.clientX-sx,e.clientY-sy)>10) cancel(); },true);
+  ['pointerup','pointercancel','wheel'].forEach(n=>el.addEventListener(n,cancel,true));
+  document.addEventListener('pointerdown',e=>{ if(!$('ptmenu').contains(e.target)) closePtMenu(); },true);
+})();
+function pinIcon(ch){ return L.divIcon({className:'',html:'<div class="poi-i" style="border-color:#d6293e">'+ch+'</div>',iconSize:[26,26],iconAnchor:[13,13]}); }
+function drawPins(){
+  RT.pins.forEach(p=>map.removeLayer(p)); RT.pins=[];
+  const add=(p,ch)=>{ if(p) RT.pins.push(L.marker([p.lat,p.lon],{icon:pinIcon(ch),interactive:false}).addTo(map)); };
+  add(RT.start,'🚩'); RT.via.forEach(v=>add(v,'◎')); add(RT.fin,'🏁');
+  $('rtStart').textContent=RT.start?RT.start.lat.toFixed(4)+', '+RT.start.lon.toFixed(4):'моя позиція';
+  $('rtVia').textContent=RT.via.length?RT.via.length+' точок':'—';
+  $('rtFin').textContent=RT.fin?RT.fin.lat.toFixed(4)+', '+RT.fin.lon.toFixed(4):'не задано (довгий тап по карті)';
+}
+function setPoint(kind,ll){
+  const p={lat:ll.lat,lon:ll.lng};
+  if(kind==='fin') RT.fin=p; else if(kind==='start') RT.start=p; else RT.via.push(p);
+  drawPins();
+  if(RT.fin && (RT.start || _lastLat!=null)) buildRoute(); else { openSheet('shRoute'); sht(kind==='fin'?'Фініш задано. Чекаю позицію GPS або задайте старт':'Точку додано'); }
+}
+
+/* ── запити маршруту ── */
+async function routeOrs(pts){
+  const key=getKey('orsKey'); if(!key) throw new Error('немає ключа ORS');
+  const r=await fetch('https://api.openrouteservice.org/v2/directions/'+CFG.bike+'/geojson',{method:'POST',
+    headers:{'Authorization':key,'Content-Type':'application/json'},
+    body:JSON.stringify({coordinates:pts.map(p=>[p.lon,p.lat]),instructions:true,language:'en',units:'m',geometry_simplify:false,elevation:false})});
+  if(!r.ok){ let m='HTTP '+r.status; try{ const j=await r.json(); const e=j.error; m+=' '+(e&&(e.message||e)||''); }catch(x){} throw new Error(m); }
+  const j=await r.json(), f=j.features&&j.features[0]; if(!f) throw new Error('порожня відповідь');
+  const coords=f.geometry.coordinates.map(c=>[c[1],c[0]]), steps=[];
+  (f.properties.segments||[]).forEach(sg=>(sg.steps||[]).forEach(s=>{
+    let type=ORS_TYPES[s.type]||'straight';
+    if(type==='goal' && s.way_points[0]<coords.length-1) type='via';
+    steps.push({idx:s.way_points[0],type:type,name:(s.name&&s.name!=='-')?s.name:'',exit:s.exit_number||null});
+  }));
+  return {coords:coords,steps:steps,dist:f.properties.summary.distance,dur:f.properties.summary.duration,src:'ORS · '+CFG.bike};
+}
+function ttType(m){
+  m=String(m||'');
+  if(/UTURN|U_TURN/.test(m)) return 'uturn';
+  if(/ROUNDABOUT/.test(m)) return 'roundabout';
+  if(/SHARP_LEFT/.test(m)) return 'sharp_left'; if(/SHARP_RIGHT/.test(m)) return 'sharp_right';
+  if(/KEEP_LEFT|BEAR_LEFT/.test(m)) return 'slight_left'; if(/KEEP_RIGHT|BEAR_RIGHT/.test(m)) return 'slight_right';
+  if(/TURN_LEFT|^LEFT/.test(m)) return 'left'; if(/TURN_RIGHT|^RIGHT/.test(m)) return 'right';
+  if(/ARRIVE/.test(m)) return 'goal'; if(/WAYPOINT/.test(m)) return 'via'; if(/DEPART/.test(m)) return 'depart';
+  return null;
+}
+async function routeTomTom(pts){   // запасний варіант; на Тайвані для велосипеда не перевірено
+  const key=getKey('tomtomKey'); if(!key) throw new Error('немає ключа TomTom');
+  const path=pts.map(p=>p.lat.toFixed(6)+','+p.lon.toFixed(6)).join(':');
+  const r=await fetch('https://api.tomtom.com/routing/1/calculateRoute/'+path+'/json?key='+encodeURIComponent(key)+'&travelMode=bicycle&routeType=fastest&instructionsType=text&language=en-GB');
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  const j=await r.json(), rt=j.routes&&j.routes[0]; if(!rt) throw new Error('порожня відповідь');
+  const coords=[]; rt.legs.forEach((lg2,li)=>lg2.points.forEach((p,pi)=>{ if(li>0&&pi===0) return; coords.push([p.latitude,p.longitude]); }));
+  const cum=[0]; for(let i=1;i<coords.length;i++) cum.push(cum[i-1]+haversineM(coords[i-1][0],coords[i-1][1],coords[i][0],coords[i][1]));
+  const steps=[]; ((rt.guidance&&rt.guidance.instructions)||[]).forEach(s=>{
+    const type=ttType(s.maneuver); if(!type) return;
+    let k=0; const off=s.routeOffsetInMeters||0; while(k<cum.length-1 && cum[k]<off) k++;
+    steps.push({idx:k,type:type,name:s.street||'',exit:s.roundaboutExitNumber||null});
+  });
+  return {coords:coords,steps:steps,dist:rt.summary.lengthInMeters,dur:rt.summary.travelTimeInSeconds,src:'TomTom · bicycle'};
+}
+async function buildRoute(){
+  const from=RT.start || (_lastLat!=null?{lat:_lastLat,lon:_lastLon}:null);
+  if(!from){ sht('Немає позиції: дочекайтесь GPS або задайте старт'); return false; }
+  if(!RT.fin){ sht('Спершу задайте фініш (довгий тап по карті)'); return false; }
+  const pts=[from].concat(RT.via,[RT.fin]);
+  openSheet('shRoute'); $('rtBuild').disabled=true; $('rtInfo').textContent='⏳ Будую маршрут…';
+  let res=null, err=[];
+  try{ res=await routeOrs(pts); }catch(e){ err.push('ORS: '+e.message); dbgEv('маршрут ORS: '+e.message); }
+  if(!res){ try{ res=await routeTomTom(pts); }catch(e){ err.push('TomTom: '+e.message); dbgEv('маршрут TomTom: '+e.message); } }
+  $('rtBuild').disabled=false;
+  if(!res){ $('rtInfo').innerHTML='<span class="err">❌ Не вдалося: '+err.join(' · ')+'</span>'; return false; }
+  setRoute(res); return true;
+}
+
+/* ── файли GPX / GeoJSON (в т.ч. маршрут, збережений у VRacer) ── */
+function parseRouteText(text,kind){
+  let pts=[];
+  if(kind==='gpx' || /^\s*</.test(text)){
+    const d=new DOMParser().parseFromString(text,'application/xml');
+    let nodes=d.getElementsByTagName('trkpt'); if(!nodes.length) nodes=d.getElementsByTagName('rtept');
+    for(let i=0;i<nodes.length;i++){ const la=parseFloat(nodes[i].getAttribute('lat')), lo=parseFloat(nodes[i].getAttribute('lon')); if(!isNaN(la)&&!isNaN(lo)) pts.push([la,lo]); }
+  } else {
+    const g=JSON.parse(text);
+    const walk=o=>{ if(!o) return; if(o.type==='FeatureCollection') (o.features||[]).forEach(walk); else if(o.type==='Feature') walk(o.geometry);
+      else if(o.type==='LineString') o.coordinates.forEach(c=>pts.push([c[1],c[0]]));
+      else if(o.type==='MultiLineString') o.coordinates.forEach(l=>l.forEach(c=>pts.push([c[1],c[0]]))); };
+    walk(g);
+  }
+  return pts;
+}
+function routeFromPoints(pts,name){
+  if(pts.length<2) throw new Error('у файлі немає лінії маршруту');
+  let d=0; for(let i=1;i<pts.length;i++) d+=haversineM(pts[i-1][0],pts[i-1][1],pts[i][0],pts[i][1]);
+  RT.fin={lat:pts[pts.length-1][0],lon:pts[pts.length-1][1]}; RT.start=null; RT.via=[]; drawPins();
+  setRoute({coords:pts,steps:[],dist:d,dur:d/4.2,src:'файл '+(name||'')});
+}
+
+/* ── прийняти маршрут ── */
+function setRoute(res){
+  clearRouteLine();
+  RT.coords=res.coords; RT.steps=res.steps.slice().sort((a,b)=>a.idx-b.idx); RT.dist=res.dist; RT.dur=res.dur; RT.src=res.src;
+  RT.cum=[0]; for(let i=1;i<RT.coords.length;i++) RT.cum.push(RT.cum[i-1]+haversineM(RT.coords[i-1][0],RT.coords[i-1][1],RT.coords[i][0],RT.coords[i][1]));
+  RT.casing=L.polyline(RT.coords,{color:'#ffffff',weight:9,opacity:.92,lineCap:'round',lineJoin:'round',interactive:false}).addTo(map);
+  RT.line=L.polyline(RT.coords,{color:'#0a7cff',weight:5.5,opacity:1,lineCap:'round',lineJoin:'round',interactive:false}).addTo(map);
+  mapRouteLatLngs=RT.coords; navProgressIndex=0; navState.idx=0; navState.said={}; navState.arrived=false;
+  if(!navState.active) map.fitBounds(RT.line.getBounds(),{paddingTopLeft:[40,100],paddingBottomRight:[40,Math.round(innerHeight*0.45)],maxZoom:17,animate:false});
+  $('rtInfo').innerHTML='<b>'+fmtDist(RT.dist)+'</b> · '+fmtDur(RT.dur)+' <span class="note">('+RT.src+')</span>';
+  $('rtGo').disabled=false; renderSteps();
+  _wxChk.rain=null; _wxChk.wind=null;                                   // одразу перевірити дощ/вітер уздовж нової траси
+  try{ if(CFG.radar && CWA.vals) cwaWarnRoute(); if(CFG.wind && WIND.st.length) windWarnRoute(); }catch(e){}
+  dbgEv('маршрут: '+Math.round(RT.dist)+' м, '+RT.steps.length+' маневрів, '+res.src);
+}
+function renderSteps(){
+  const ul=$('rtSteps'); ul.innerHTML='';
+  RT.steps.forEach((s,i)=>{
+    const li=document.createElement('li'), prev=i?RT.cum[RT.steps[i-1].idx]:0, d=RT.cum[s.idx]-prev;
+    li.innerHTML='<span class="a">'+(TURN_ICON[s.type]||'•')+'</span><span class="t"></span><span class="m"></span>';
+    li.querySelector('.t').textContent=turnPhrase(s).replace(/^./,c=>c.toUpperCase())+(s.name?' · '+s.name:'');
+    li.querySelector('.m').textContent=i?fmtDist(d):''; ul.appendChild(li);
+  });
+}
+function clearRouteLine(){ [RT.line,RT.casing].forEach(l=>{ if(l) map.removeLayer(l); }); RT.line=RT.casing=null; }
+function clearRoute(){
+  navStop(true); clearRouteLine(); RT.start=null; RT.via=[]; RT.fin=null; RT.coords=[]; RT.cum=[]; RT.steps=[]; RT.dist=0;
+  mapRouteLatLngs=[]; navProgressIndex=0; drawPins(); $('rtSteps').innerHTML=''; $('rtGo').disabled=true;
+  $('rtInfo').textContent='Довгий тап по карті → «Фініш», «Через» або «Старт».';
+  CWA_WARN.state='clear'; WIND_WARN.state='clear';
+}
+
+/* ── навігація ── */
+function projectOnRoute(lat,lon){
+  const C=RT.coords, n=C.length, kx=Math.cos(lat*Math.PI/180)*111320, ky=110540;
+  const scan=(a,b)=>{ let best={i:a,t:0,d:1e12};
+    for(let i=a;i<=b;i++){
+      const ax=(C[i][1]-lon)*kx, ay=(C[i][0]-lat)*ky, bx=(C[i+1][1]-lon)*kx, by=(C[i+1][0]-lat)*ky, dx=bx-ax, dy=by-ay, l2=dx*dx+dy*dy;
+      let t=l2>0?-(ax*dx+ay*dy)/l2:0; t=Math.max(0,Math.min(1,t));
+      const px=ax+t*dx, py=ay+t*dy, d=Math.hypot(px,py); if(d<best.d) best={i:i,t:t,d:d}; }
+    return best; };
+  let best=scan(Math.max(0,navState.idx-5),Math.min(n-2,navState.idx+80));
+  if(best.d>60){ const b2=scan(0,n-2); if(b2.d<best.d) best=b2; }
+  best.along=RT.cum[best.i]+best.t*(RT.cum[best.i+1]-RT.cum[best.i]); return best;
+}
+function navStart(){
+  if(!RT.coords.length){ sht('Спершу побудуйте маршрут'); return; }
+  navState.active=true; navState.said={}; navState.arrived=false; navState.off=false; navState.idx=0;
+  _follow=true; wakeOn(); compassStart(); closeSheets();
+  $('turn').hidden=false; $('rem').hidden=false; document.body.classList.add('navon');
+  if(_lastLat!=null) map.setView([_lastLat,_lastLon],Math.max(map.getZoom(),17),{animate:false});
+  speak('Навігацію розпочато. '+distWords(RT.dist)+' до фінішу.',{phase:'nav',key:'start'});
+  dbgEv('навігація: старт'); navTick();
+}
+function navStop(silent){
+  if(!navState.active && !silent) return;
+  document.body.classList.remove('navon'); navState.active=false; navState.off=false; $('turn').hidden=true; $('rem').hidden=true; $('turnOff').hidden=true; $('turn').classList.remove('offr');
+  if(!silent) sht('Навігацію зупинено');
+}
+function navTick(){
+  if(!navState.active || !RT.coords.length || _lastLat==null) return;
+  const P=projectOnRoute(_lastLat,_lastLon), tol=Math.max(45,_lastAcc*1.5);
+  const off=P.d>tol;
+  if(off){
+    navState.off=true; $('turn').classList.add('offr'); $('turnOff').hidden=false;
+    $('turnAr').textContent='⚠'; $('turnD').textContent='Поза маршрутом'; $('turnN').textContent=Math.round(P.d)+' м від лінії';
+    if(Date.now()-navState.offSaid>40000){ navState.offSaid=Date.now(); speak('Ви з\'їхали з маршруту',{phase:'nav',key:'off'}); }
+    return;
+  }
+  if(navState.off){ navState.off=false; $('turn').classList.remove('offr'); $('turnOff').hidden=true; }
+  navState.idx=P.i; navProgressIndex=P.i;
+  const along=P.along, remD=Math.max(0,RT.dist-along), remT=RT.dur*(remD/Math.max(1,RT.dist));
+  $('remV').textContent=fmtDist(remD); $('remS').textContent=fmtDur(remT)+' · '+new Date(Date.now()+remT*1000).toLocaleTimeString('uk-UA',{hour:'2-digit',minute:'2-digit'});
+  let k=RT.steps.findIndex(s=>s.type!=='depart' && RT.cum[s.idx]-along>8);
+  if(k<0){ // кроків більше немає (маршрут із файлу) — просто рахуємо до фінішу
+    $('turnAr').textContent=TURN_ICON.goal; $('turnD').textContent=fmtDist(remD); $('turnN').textContent='до фінішу';
+    if(remD<25) arrive(); return;
+  }
+  const s=RT.steps[k], d=RT.cum[s.idx]-along;
+  $('turnAr').textContent=TURN_ICON[s.type]||'⬆'; $('turnD').textContent=fmtDist(d); $('turnN').textContent=(s.name||turnPhrase(s));
+  const T=[250,90,25], key=k+':';
+  let said=false;
+  for(let q=T.length-1;q>=0;q--){            // від найближчого порога
+    if(d<=T[q] && !navState.said[key+T[q]]){
+      for(let w=0;w<=q;w++) navState.said[key+T[w]]=true;        // раніші пороги вважаємо пройденими
+      if(!said){ said=true;
+        const ph=turnPhrase(s);
+        if(s.type==='goal'){ /* «Ви прибули» говорить arrive() */ }
+        else if(s.type==='via'){ speak('Проміжна точка через '+distWords(d),{phase:'nav',key:'s'+k}); }
+        else speak(q===2 ? ph.replace(/^./,c=>c.toUpperCase()) : 'Через '+distWords(d)+', '+ph,{phase:'nav',key:'s'+k});
+      }
+      break;
+    }
+  }
+  if(s.type==='goal' && d<25) arrive();
+}
+function arrive(){
+  if(navState.arrived) return; navState.arrived=true;
+  speak('Ви прибули до місця призначення',{phase:'nav',key:'goal'}); sht('🏁 Ви прибули!',6000);
+  setTimeout(()=>navStop(true),4000);
+}
+$('turnOff').onclick=async()=>{ RT.start=null; const ok=await buildRoute(); if(ok){ navState.active=true; navState.said={}; navTick(); } };
+
+/* ═══════════ vTrip · заклади (POI зі спільної бази VRacer) ═══════════ */
+const POI_EMOJI={'7-Eleven':'🏪','Family Mart':'🏬','OK Mart':'🛒','CoCo':'🧋','Заправка':'⛽','Туалети':'🚻','Улюблене':'⭐'};
+let POI_DB=null; const poiLayer=L.layerGroup().addTo(map);
+function poiLoad(force){
+  if(POI_DB && !force) return POI_DB;
+  const a=lg('poibrandsdb'); POI_DB=Array.isArray(a)?a.filter(r=>r && isFinite(r.lat) && isFinite(r.lon) && r.brand):[]; return POI_DB;
+}
+function poiCat(brand){ return (lg('poicustomcats')||[]).find(c=>c.brand===brand)||null; }
+function poiEmoji(brand){ const c=poiCat(brand); return c?((c.emoji||'').trim()||'📍'):(POI_EMOJI[brand]||'📍'); }
+function poiName(brand){ const c=poiCat(brand); return c?((c.name||'').trim()||brand):brand; }
+function poiChipsRender(){
+  const db=poiLoad(), cnt={}; db.forEach(r=>{ cnt[r.brand]=(cnt[r.brand]||0)+1; });
+  const box=$('poiChips'); box.innerHTML='';
+  const brands=Object.keys(cnt).sort();
+  $('poiInfo').textContent=brands.length?('У базі '+db.length+' точок, '+brands.length+' категорій.'):'У спільному сховищі немає бази закладів. Завантажте її у VRacer (Налаштування → Сигнали → бренд-бази) — вона з’явиться тут автоматично.';
+  brands.forEach(b=>{
+    const c=document.createElement('button'); c.className='chipb'+(CFG.poi[b]?' on':''); c.textContent=poiEmoji(b)+' '+poiName(b)+' · '+cnt[b];
+    c.onclick=()=>{ CFG.poi[b]=!CFG.poi[b]; saveCfg(); c.classList.toggle('on',!!CFG.poi[b]); poiRender(); }; box.appendChild(c);
+  });
+  if(brands.length){
+    const t=document.createElement('button'); t.className='chipb'+(CFG.poiWc?' on':''); t.textContent='🚻 лише з туалетом';
+    t.onclick=()=>{ CFG.poiWc=!CFG.poiWc; saveCfg(); t.classList.toggle('on',!!CFG.poiWc); poiRender(); }; box.appendChild(t);
+  }
+}
+function poiRender(){
+  poiLayer.clearLayers();
+  if(map.getZoom()<13) return;
+  const on=Object.keys(CFG.poi).filter(b=>CFG.poi[b]); if(!on.length) return;
+  const b=map.getBounds().pad(0.1), c=map.getCenter(), set=new Set(on); let list=[];
+  poiLoad().forEach(r=>{ if(set.has(r.brand) && b.contains([r.lat,r.lon]) && (!CFG.poiWc || r.toilet==='yes')) list.push(r); });
+  list.sort((p,q)=>((p.lat-c.lat)**2+(p.lon-c.lng)**2)-((q.lat-c.lat)**2+(q.lon-c.lng)**2));
+  list.slice(0,250).forEach(r=>{
+    const m=L.marker([r.lat,r.lon],{icon:L.divIcon({className:'',html:'<div class="poi-i">'+poiEmoji(r.brand)+'</div>',iconSize:[26,26],iconAnchor:[13,13]})});
+    m.on('click',()=>{
+      const d=document.createElement('div');
+      d.innerHTML='<b></b><div class="note" style="margin:3px 0"></div>';
+      d.querySelector('b').textContent=(r.name||poiName(r.brand));
+      d.querySelector('.note').textContent=poiName(r.brand)+(r.hours?' · '+r.hours:'')+(r.toilet==='yes'?' · 🚻 є туалет':'');
+      const bt=document.createElement('button'); bt.className='btn'; bt.textContent='🏁 Маршрут сюди'; bt.onclick=()=>{ map.closePopup(); setPoint('fin',{lat:r.lat,lng:r.lon}); }; d.appendChild(bt);
+      L.popup({closeButton:false,offset:[0,-8]}).setLatLng([r.lat,r.lon]).setContent(d).openOn(map);
+    });
+    poiLayer.addLayer(m);
+  });
+}
+map.on('moveend zoomend',poiRender);
+
+/* ═══════════ vTrip · TDX (Transport Data eXchange) — каркас: токен + перевірка доступу ═══════════
+   OAuth2 client_credentials: токен живе ~24 год, кешуємо в 'ar_tdxtoken'. Ключі — 'ar_tdxId' / 'ar_tdxSecret' (поля в Налаштуваннях). */
+const TDX_AUTH='https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token', TDX_API='https://tdx.transportdata.tw/api/';
+let _tdxTokP=null, TDX_BLOCK_UNTIL=0, _tdxQ=Promise.resolve();
+function tdxToken(force){
+  const c=lg('tdxtoken'); if(!force && c && c.token && c.exp>Date.now()+120000) return Promise.resolve(c.token);
+  if(_tdxTokP) return _tdxTokP;                                           // один запит токена на всіх
+  _tdxTokP=(async()=>{
+    const id=getKey('tdxId'), sec=getKey('tdxSecret'); if(!id||!sec) throw new Error('немає Client ID / Secret (Налаштування → API ключі)');
+    const r=await fetch(TDX_AUTH,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'client_credentials',client_id:id,client_secret:sec})});
+    if(r.status===429){ TDX_BLOCK_UNTIL=Date.now()+60000; throw new Error('токен HTTP 429 (ліміт запитів TDX)'); }
+    if(!r.ok){ let t=''; try{ t=(await r.text()).slice(0,160); }catch(e){} throw new Error('токен HTTP '+r.status+' '+t); }
+    const j=await r.json(); ls('tdxtoken',{token:j.access_token,exp:Date.now()+(j.expires_in||86400)*1000}); return j.access_token;
+  })();
+  _tdxTokP.then(()=>{ _tdxTokP=null; },()=>{ _tdxTokP=null; });
+  return _tdxTokP;
+}
+// Запити TDX — по черзі з паузою ≥350 мс (щоб не ловити 429 на «пачках»); після 429 — пауза за Retry-After (мін. 60 с).
+function tdxGet(path){
+  const run=async()=>{
+    const wait=TDX_BLOCK_UNTIL-Date.now();
+    if(wait>0){ const e=new Error('ліміт запитів TDX (429): повтор через '+Math.ceil(wait/1000)+' с'); e.status=429; throw e; }
+    for(let a=0;a<2;a++){
+      const t=await tdxToken(a>0);
+      const r=await fetch(TDX_API+path,{headers:{Authorization:'Bearer '+t,Accept:'application/json'}});
+      if(r.status===401 && a===0) continue;
+      if(r.status===429){
+        const ra=parseInt(r.headers.get('Retry-After')||'0',10); TDX_BLOCK_UNTIL=Date.now()+Math.max(60,ra||0)*1000;
+        let body=''; try{ body=(await r.text()).replace(/\s+/g,' ').slice(0,220); }catch(x){}
+        const e=new Error('HTTP 429 '+path.split('?')[0].replace('basic/v2/Bike/','')+(ra?' · Retry-After '+ra+' с':'')+(body?' · відповідь TDX: '+body:'')); e.status=429; throw e;
+      }
+      if(!r.ok) throw new Error('HTTP '+r.status+' '+path.split('?')[0]);
+      return r.json();
+    }
+  };
+  const p=_tdxQ.then(run,run);
+  _tdxQ=p.then(()=>new Promise(r=>setTimeout(r,350)),()=>new Promise(r=>setTimeout(r,350)));
+  return p;
+}
+function tdxStateRender(){
+  const has=getKey('tdxId')&&getKey('tdxSecret'), c=lg('tdxtoken');
+  $('tdxState').innerHTML=has?(c&&c.exp>Date.now()?'<span class="ok">✅ Токен дійсний ще '+Math.round((c.exp-Date.now())/3600000)+' год</span>':'Ключі задано, токен ще не отримано'):'<span class="err">Ключів TDX немає</span> — вставте Client ID і Secret у Налаштування → API ключі.';
+}
+$('tdxTest').onclick=async()=>{
+  // Перевіряємо токен і кілька можливих шляхів YouBike — показуємо статус кожного, щоб зрозуміти, який саме працює.
+  const out=$('tdxOut'); out.textContent='1) Отримую токен…'; $('tdxTest').disabled=true;
+  const lines=[]; const show=()=>{ out.textContent=lines.join('\n'); };
+  try{
+    await tdxToken(true); lines.push('1) Токен: ✅'); tdxStateRender(); show();
+    const c=(_lastLat!=null)?{lat:_lastLat,lng:_lastLon}:map.getCenter();
+    const sp='$spatialFilter=nearby('+c.lat.toFixed(5)+','+c.lng.toFixed(5)+',1500)&$top=5&$format=JSON';
+    const probes=[
+      ['Availability/NearBy','basic/v2/Bike/Availability/NearBy?'+sp],
+      ['Station/NearBy','basic/v2/Bike/Station/NearBy?'+sp],
+      ['Availability/City/Taipei','basic/v2/Bike/Availability/City/Taipei?$top=3&$format=JSON'],
+      ['Availability/Taipei','basic/v2/Bike/Availability/Taipei?$top=3&$format=JSON'],
+      ['Station/City/Taipei','basic/v2/Bike/Station/City/Taipei?$top=3&$format=JSON'],
+      ['Station/City/NewTaipei','basic/v2/Bike/Station/City/NewTaipei?$top=3&$format=JSON']
+    ];
+    let good=0;
+    for(const pr of probes){
+      try{
+        const j=await tdxGet(pr[1]);
+        const arr=Array.isArray(j)?j:(Object.values(j||{}).find(Array.isArray)||[]);
+        const nm=arr.slice(0,3).map(x=>(x.StationName&&(x.StationName.Zh_tw||x.StationName.En))||x.StationUID||'?').join(', ');
+        lines.push('✅ '+pr[0]+': '+arr.length+' шт. YouBike'+(nm?' ('+nm+')':'')+(arr[0]&&arr[0].AvailableRentBikes!=null?' · вільних велосипедів у 1-й: '+arr[0].AvailableRentBikes:'')); good++;
+      }catch(e){ lines.push('❌ '+pr[0]+': '+(e&&e.message||e)); }
+      show();
+    }
+    lines.push(good?'\nTDX доступний з браузера ✅ (CORS ок). Працюючі шляхи позначено ✅.':'\nЖоден шлях YouBike не відповів — надішліть мені цей текст.');
+  }catch(e){
+    const cors=(e instanceof TypeError);
+    lines.push('❌ '+(e&&e.message||e)+(cors?'\n(TypeError — схоже на CORS/мережу: тоді потрібен проксі)':'')); dbgEv('TDX: '+(e&&e.message));
+  }
+  show(); $('tdxTest').disabled=false;
+};
+
+/* ═══════════ шторки, кнопки, налаштування ═══════════ */
+const SHEETS=['shRoute','shPoi','shTransit','shSet'], DOCK={shRoute:'dRoute',shPoi:'dPoi',shTransit:'dTransit',shSet:'dSet'};
+function closeSheets(){ SHEETS.forEach(s=>$(s).classList.remove('open')); Object.values(DOCK).forEach(d=>$(d).classList.remove('on')); }
+function openSheet(id){
+  const was=$(id).classList.contains('open'); closeSheets(); if(was) return;
+  $(id).classList.add('open'); $(DOCK[id]).classList.add('on');
+  if(id==='shPoi') poiChipsRender();
+  if(id==='shTransit') tdxStateRender();
+  if(id==='shSet') settingsRefresh();
+  if(id==='shRoute'){ $('rtProf').value=CFG.bike; }
+}
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=closeSheets);
+$('dRoute').onclick=()=>openSheet('shRoute'); $('dPoi').onclick=()=>openSheet('shPoi');
+$('dTransit').onclick=()=>openSheet('shTransit'); $('dSet').onclick=()=>openSheet('shSet');
+map.on('click',closeSheets);
+
+$('bRain').onclick=()=>rainSet(!CFG.radar);
+$('bWind').onclick=()=>windSet(!CFG.wind);
+$('bFc').onclick=()=>fcSet(!CFG.fc);
+$('bSnd').onclick=()=>{ CFG.sound=!CFG.sound; saveCfg(); sndUi(); if(!CFG.sound){ SP.q=[]; SP.tok++; try{speechSynthesis.cancel();}catch(e){} SP.busy=false; } sht(CFG.sound?'🔊 Звук увімкнено':'🔇 Звук вимкнено'); if(CFG.sound) speak('Звук увімкнено',{phase:'nav'}); };
+function sndUi(){ $('bSndI').textContent=CFG.sound?'🔊':'🔇'; setBtn('bSnd',!CFG.sound); }
+$('bZin').onclick=()=>map.zoomIn(1); $('bZout').onclick=()=>map.zoomOut(1);
+function locUi(){ setBtn('bLoc',_follow); }
+$('bLoc').onclick=()=>{
+  if(_lastLat==null){ sht('Чекаю на GPS…'); return; }
+  _follow=true; locUi(); map.setView([_lastLat,_lastLon],Math.max(map.getZoom(),16),{animate:false});
+};
+map.on('dragstart',()=>{ _follow=false; locUi(); });
+$('fcPlay').onclick=()=>fcPlay(!FC.playing);
+$('fcR').oninput=e=>{ fcPlay(false); FC.idx=+e.target.value; fcShow(); };
+
+$('rtBuild').onclick=()=>buildRoute();
+$('rtGo').onclick=()=>navStart();
+$('rtClear').onclick=()=>{ clearRoute(); sht('Маршрут очищено'); };
+$('rtProf').onchange=e=>{ CFG.bike=e.target.value; saveCfg(); if(RT.fin) buildRoute(); };
+$('rtVr').onclick=async()=>{
+  try{
+    const rec=await idbGet('routeFile'); if(!rec || !rec.text){ sht('У сховищі VRacer немає збереженого маршруту'); return; }
+    routeFromPoints(parseRouteText(rec.text,rec.kind),rec.name); sht('Маршрут з VRacer: '+(rec.name||''));
+  }catch(e){ sht('⚠️ '+e.message); dbgEv('маршрут з VRacer: '+e.message); }
+};
+$('rtFile').onclick=()=>$('rtFileIn').click();
+$('rtFileIn').onchange=async e=>{
+  const f=e.target.files[0]; if(!f) return; e.target.value='';
+  try{ routeFromPoints(parseRouteText(await f.text(),/\.gpx$/i.test(f.name)?'gpx':'json'),f.name); }catch(x){ sht('⚠️ '+x.message); }
+};
+
+/* ── Налаштування ── */
+function renderKeys(){
+  const box=$('keys'); box.innerHTML='';
+  KEYDEFS.forEach(d=>{
+    const row=document.createElement('div'); row.className='row';
+    const lb=document.createElement('label'); lb.textContent=d.name; lb.style.flex='0 0 110px';
+    const inp=document.createElement('input'); inp.type='password'; inp.value=getKey(d.k); inp.placeholder=d.hint||''; inp.autocomplete='off'; inp.autocapitalize='off'; inp.spellcheck=false;
+    const eye=document.createElement('button'); eye.className='btn sec2'; eye.textContent='👁'; eye.onclick=()=>{ inp.type=inp.type==='password'?'text':'password'; };
+    const sv=document.createElement('button'); sv.className='btn'; sv.textContent='💾';
+    const save=()=>{ ls(d.k,inp.value.trim()); sht('🔑 '+d.name+(inp.value.trim()?' збережено':' очищено')); if(d.k.startsWith('tdx')) ls('tdxtoken',null); };
+    sv.onclick=save; inp.onchange=save;
+    row.append(lb,inp,eye,sv); box.appendChild(row);
+  });
+  const t=document.createElement('div'); t.className='btns';
+  const b=document.createElement('button'); b.className='btn sec2'; b.textContent='Перевірити ключ CWA';
+  const st=document.createElement('div'); st.className='note';
+  b.onclick=async()=>{ st.textContent='⏳…'; try{ const m=await cwaFetchMeta(); st.innerHTML='<span class="ok">✅ CWA працює, радар '+m.dt.slice(11,16)+'</span>'; }catch(e){ st.innerHTML='<span class="err">❌ '+e.message+'</span>'; } };
+  t.appendChild(b); box.appendChild(t); box.appendChild(st);
+}
+async function settingsRefresh(){
+  $('stamp').textContent='vTrip · збірка: '+BUILD+' · '+location.origin;
+  $('sDay').value=CFG.dayMode; $('sMb').value=CFG.useMb?'1':'0';
+  const n=await idbCountTiles(), cz=cacheZ();
+  $('cacheInfo').innerHTML='Спільний кеш тайлів (IndexedDB «vracer-map»): <b>'+(n<0?'недоступний':n)+'</b> тайлів<br>Кешується зум '+cz[0]+'–'+cz[1]+' (налаштування VRacer)<br>Офлайн-карта (.mbtiles): <b>'+(mbSqlDb?mbFileName:'не завантажена')+'</b><br>NLSC CORS: '+NLSC_CORS;
+  const v=pickVoice(); $('voiceInfo').textContent=v?('✅ '+v.name+' ('+v.lang+')'):('⚠️ українського голосу не знайдено; iOS: Налаштування → Універсальний доступ → Усний вміст → Голоси');
+  $('logbox').textContent=LOGS.slice(-80).join('\n');
+}
+$('sDay').onchange=e=>{ CFG.dayMode=e.target.value; saveCfg(); applyTheme(); };
+$('sMb').onchange=e=>{ CFG.useMb=e.target.value==='1'; saveCfg(); if(CFG.useMb) loadOfflineMap(); else { mbSqlDb=null; mbTileCache.clear(); sht('Офлайн-карту вимкнено до перезапуску'); } };
+$('sndTest').onclick=()=>{ chime(); speak('Перевірка звуку. Через двісті метрів поверніть праворуч.',{phase:'nav'}); };
+$('cmpAsk').onclick=async()=>{ const ok=await compassStart(); sht(ok?'Компас увімкнено':'Компас недоступний'); };
+if('speechSynthesis' in window) speechSynthesis.onvoiceschanged=()=>{ if($('shSet').classList.contains('open')) settingsRefresh(); };
+
+
+/* сторінка має 2 px запасу лише для жесту браузера; щойно відпустили — повертаємо на верх */
+window.addEventListener('scroll',()=>{ if(window.scrollY>0) window.scrollTo(0,0); },{passive:true});
+
+/* ═══════════ старт ═══════════ */
+applyTheme(); renderKeys(); drawPins(); sndUi(); locUi();
+$('stamp').textContent='vTrip · збірка: '+BUILD;
+setInterval(applyTheme,60000);
+loadOfflineMap();
+gpsStart();
+if(CFG.radar) setTimeout(()=>rainSet(true),800);
+if(CFG.wind)  setTimeout(()=>windSet(true),1200);
+if(CFG.fc)    setTimeout(()=>fcSet(true),1600);
+setTimeout(poiRender,500);
+dbgEv('vTrip '+BUILD+' · origin '+location.origin);
+
+/* ═══════════ vTrip · YouBike на карті (TDX) ═══════════
+   Перевірено на реальному API: працюють шляхи Station/City/{місто}; Station/NearBy і Availability/NearBy у цьому плані дають 404 → беремо за містом.
+   Місто визначаємо за центром карти (найближчі з таблиці), станції фільтруємо за видимою областю. */
+const YB_CITIES=[['Taipei',25.04,121.55],['NewTaipei',25.01,121.46],['Keelung',25.13,121.74],['Taoyuan',24.99,121.30],['Hsinchu',24.80,120.97],['HsinchuCounty',24.84,121.01],
+  ['MiaoliCounty',24.56,120.82],['Taichung',24.15,120.67],['Chiayi',23.48,120.45],['Tainan',22.99,120.21],['Kaohsiung',22.63,120.30],['PingtungCounty',22.67,120.49],
+  ['KinmenCounty',24.45,118.37],['Taitung',22.76,121.14],['YilanCounty',24.70,121.74],['HualienCounty',23.98,121.60]];
+const YB={stat:{},err:{},st:{},avAt:{},av:{},loading:{},layer:L.layerGroup().addTo(map),timer:null,avForm:-1,deb:null};
+const YB_AV_PATHS=[c=>'basic/v2/Bike/Availability/City/'+c+'?$format=JSON', c=>'basic/v2/Bike/Availability/'+c+'?$format=JSON'];
+function ybArr(j){ return Array.isArray(j)?j:(Object.values(j||{}).find(Array.isArray)||[]); }
+function ybCitiesNear(){
+  const c=map.getCenter(); const l=YB_CITIES.map(x=>({c:x[0],d:haversineM(c.lat,c.lng,x[1],x[2])})).filter(x=>x.d<30000).sort((a,b)=>a.d-b.d);
+  return l.slice(0,2).map(x=>x.c);
+}
+function ybLoadStations(c){
+  if(YB.st[c]) return Promise.resolve();
+  if(YB.loading['s'+c]) return YB.loading['s'+c];                       // вже вантажиться — чекаємо той самий запит (раніше друге оновлення йшло далі без станцій)
+  return (YB.loading['s'+c]=ybLoadStations2(c));
+}
+async function ybLoadStations2(c){
+  try{
+    const rec=await idbGet('ybst_'+c);                                    // станції майже не змінюються — тримаємо 7 днів у спільній IndexedDB
+    if(rec && rec.list && rec.list.length && Date.now()-rec.t<7*864e5){ YB.st[c]=rec.list; dbgEv('YouBike '+c+': станцій '+rec.list.length+' (з кешу)'); return; }
+    const arr=ybArr(await tdxGet('basic/v2/Bike/Station/City/'+c+'?$format=JSON'));
+    const list=arr.filter(s=>s.StationPosition&&isFinite(s.StationPosition.PositionLat)).map(s=>({id:s.StationUID,sid:s.StationID,
+      name:String((s.StationName&&(s.StationName.Zh_tw||s.StationName.En))||'').replace(/^YouBike\d(\.\d)?_/,''),lat:+s.StationPosition.PositionLat,lon:+s.StationPosition.PositionLon,cap:s.BikesCapacity||0}));
+    YB.st[c]=list; if(list.length) idbSet('ybst_'+c,{t:Date.now(),list:list});
+    dbgEv('YouBike '+c+': станцій '+list.length);
+  }catch(e){ YB.err[c]=e.message; dbgEv('YouBike станції '+c+': '+e.message); }   // збій НЕ кешуємо — наступне оновлення спробує знову
+  finally{ delete YB.loading['s'+c]; }
+}
+function ybNum(){ for(const v of arguments){ if(v!=null && isFinite(v)) return +v; } return null; }
+async function ybLoadAvail(c){
+  await ybLoadStations(c); if(!YB.st[c]) return;
+  if(YB.loading['a'+c]) return; if(Date.now()-(YB.avAt[c]||0)<110000) return; YB.loading['a'+c]=1;
+  try{
+    const order=YB.avForm>=0?[YB.avForm]:[0,1]; let arr=null, last='';
+    for(const i of order){ try{ arr=ybArr(await tdxGet(YB_AV_PATHS[i](c))); YB.avForm=i; break; }catch(e){ last=e.message; } }
+    if(!arr) throw new Error(last||'немає даних');
+    arr.forEach(a=>{ const d=a.AvailableRentBikesDetail||{}; const v={rent:ybNum(a.AvailableRentBikes,(d.GeneralBikes!=null||d.ElectricBikes!=null)?(+d.GeneralBikes||0)+(+d.ElectricBikes||0):null,a.AvailableBikes,a.available_rent_bikes),ret:ybNum(a.AvailableReturnBikes,a.AvailableSpaces,a.available_return_bikes),ok:a.ServiceStatus,t:a.UpdateTime}; if(a.StationUID!=null) YB.av[a.StationUID]=v; if(a.StationID!=null) YB.av['id:'+a.StationID]=v; });
+    const sts=YB.st[c]||[]; let m=0; sts.forEach(x=>{ if(YB.av[x.id]||YB.av['id:'+x.sid]) m++; });
+    let up=0,withB=0; arr.forEach(a=>{ if(+a.ServiceStatus===1){ up++; if((+a.AvailableRentBikes||0)>0) withB++; } });
+    YB.stat[c]={up:up,withB:withB,n:arr.length,match:m,total:sts.length,path:YB.avForm+1,sample:arr[0]?Object.keys(arr[0]).join(','):''};
+    if(!YB.sampled){ YB.sampled=1; try{ dbgEv('YouBike зразок наявності: '+JSON.stringify(arr[0]).slice(0,400)); dbgEv('YouBike зразок станції: '+JSON.stringify((YB.st[c]||[])[0])); }catch(e){} }
+    YB.avAt[c]=Date.now(); dbgEv('YouBike наявність '+c+': '+arr.length+' записів, збіг зі станціями '+m+'/'+sts.length+' (шлях №'+(YB.avForm+1)+'); працюють '+up+', з велосипедами '+withB);
+  }catch(e){ YB.err[c]=e.message; dbgEv('YouBike наявність '+c+': '+e.message); YB.avAt[c]=Date.now()-(e.status===429?0:100000); }   // повторимо за ~15 с
+  finally{ delete YB.loading['a'+c]; }
+}
+function ybColor(n){ return n==null?'#6b7684':(n<=0?'#d6293e':(n<=3?'#e8590c':'#1f9d55')); }
+function ybRender(){
+  YB.layer.clearLayers();
+  if(!CFG.yb || map.getZoom()<14) return;
+  const b=map.getBounds().pad(0.1), cen=map.getCenter(), mode=CFG.ybMode||'rent'; let list=[];
+  Object.keys(YB.st).forEach(c=>YB.st[c].forEach(s=>{ if(b.contains([s.lat,s.lon])) list.push(s); }));
+  list.sort((p,q)=>((p.lat-cen.lat)**2+(p.lon-cen.lng)**2)-((q.lat-cen.lat)**2+(q.lon-cen.lng)**2));
+  list.slice(0,220).forEach(s=>{
+    const a=YB.av[s.id]||YB.av['id:'+s.sid], down=!!(a && a.ok!=null && +a.ok!==1), n=a?(mode==='rent'?a.rent:a.ret):null;
+    const m=L.marker([s.lat,s.lon],{icon:L.divIcon({className:'',html:'<div class="yb" style="background:'+(down?'#6b7684;opacity:.65':ybColor(n))+'">'+(down?'✕':(n==null?'?':n))+'</div>',iconSize:[30,30],iconAnchor:[15,15]})});
+    m.on('click',()=>{
+      const d=document.createElement('div'), t=document.createElement('b'); t.textContent=s.name||'YouBike';
+      const i=document.createElement('div'); i.className='note'; i.style.margin='3px 0';
+      i.textContent=down?('⛔ станція не працює (ServiceStatus '+a.ok+')'):a?('🚲 вільних велосипедів: '+a.rent+' · 🅿 вільних місць: '+a.ret+(s.cap?' · місць усього: '+s.cap:'')):'наявність невідома';
+      const bt=document.createElement('button'); bt.className='btn'; bt.textContent='🏁 Маршрут сюди'; bt.onclick=()=>{ map.closePopup(); setPoint('fin',{lat:s.lat,lng:s.lon}); };
+      d.append(t,i,bt); L.popup({closeButton:false,offset:[0,-8]}).setLatLng([s.lat,s.lon]).setContent(d).openOn(map);
+    });
+    YB.layer.addLayer(m);
+  });
+  $('bBikeL').textContent=list.length?(mode==='rent'?'🚲 '+list.length:'🅿 '+list.length):'YouBike';
+}
+async function ybRefresh(){
+  if(!CFG.yb) return;
+  if(map.getZoom()<14){ ybRender(); return; }
+  const cs=ybCitiesNear();
+  if(!cs.length){ ybRender(); $('ybInfo').textContent='Поблизу немає міст із YouBike в таблиці.'; return; }
+  try{ await Promise.all(cs.map(ybLoadStations)); ybRender(); await Promise.all(cs.map(c=>ybLoadAvail(c).then(ybRender))); ybRender(); }   // малюємо одразу, щойно прийшло місто, не чекаючи решти
+  catch(e){ dbgEv('YouBike: '+e.message); }
+  $('ybInfo').innerHTML='Міста: '+cs.map(c=>{ const t=YB.stat[c], e=YB.err[c]; return c+': станцій '+((YB.st[c]||[]).length)+(t?', працюють '+t.up+' з '+t.n+', з велосипедами '+t.withB:(e?', <span class="err">наявність ❌ '+e+'</span>':', наявність…')); }).join(' · ')+' · '+new Date().toLocaleTimeString('uk-UA',{hour:'2-digit',minute:'2-digit'});
+}
+function ybModesRender(){
+  const box=$('ybModes'); box.innerHTML='';
+  [['rent','🚲 вільні велосипеди'],['ret','🅿 вільні місця (щоб здати)']].forEach(m=>{
+    const b=document.createElement('button'); b.className='chipb'+((CFG.ybMode||'rent')===m[0]?' on':''); b.textContent=m[1];
+    b.onclick=()=>{ CFG.ybMode=m[0]; saveCfg(); ybModesRender(); ybRender(); }; box.appendChild(b); });
+}
+async function ybSet(on){
+  CFG.yb=on; saveCfg(); setBtn('bBike',on); clearInterval(YB.timer);
+  if(!on){ YB.layer.clearLayers(); $('bBikeL').textContent='YouBike'; return; }
+  if(!getKey('tdxId')||!getKey('tdxSecret')){ sht('ℹ️ YouBike: введіть TDX Client ID/Secret в Налаштуваннях'); CFG.yb=false; saveCfg(); setBtn('bBike',false); return; }
+  if(map.getZoom()<14) sht('🚲 YouBike з’явиться від зуму 14');
+  await ybRefresh(); YB.timer=setInterval(()=>{ if(!document.hidden) ybRefresh(); },120000);
+}
+map.on('moveend zoomend',()=>{ if(!CFG.yb) return; ybRender(); clearTimeout(YB.deb); YB.deb=setTimeout(ybRefresh,1200); });
+$('bBike').onclick=()=>ybSet(!CFG.yb);
+ybModesRender();
+if(CFG.yb) setTimeout(()=>ybSet(true),2000);
+
+</script>
+</body>
+</html>
