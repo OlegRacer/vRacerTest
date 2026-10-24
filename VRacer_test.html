@@ -1229,7 +1229,7 @@ body.hide-cam-radar .cam-radar-badge{display:none !important;}
 
 <div class="mb" id="em">
   <div class="ms">
-    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 24.10.2026 11:19)</span></h3><button class="mc2" id="emc">✕</button></div>
+    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 24.10.2026 15:52)</span></h3><button class="mc2" id="emc">✕</button></div>
     <div class="tbar">
       <div class="tab a" id="t0" onclick="st(0)">ЕКРАН</div>
       <div class="tab" id="t1" onclick="st(1)">СИГНАЛИ</div>
@@ -8058,13 +8058,29 @@ const CartoUnderLayer=L.GridLayer.extend({
 // Пише ЛИШЕ style.opacity контейнера шару (без обходу тайлів, без reflow) і лише при зміні >0.02 — вартість у пінчі ≈ нуль.
 // 21.10.2026: Carto-підложка ЗНИКАЄ при наближенні: повна прозорість до зуму 15 (поки NLSC ще з'являється зверху), далі 1→0 на зумі 15…16.5.
 // Не одночасно з появою NLSC — інакше посередині «провал» до чорного. Для відкату поклади HYB_FAR_FADE_END = 99 (підложка лишається).
+// 24.10.2026: ПЕРЕМИКАЧ CARTO (з vTrip). Вимкнено → підкладки Carto (z14 + z11) не додаються, NLSC показується з будь-якого зуму (мін. 7), без Carto-фону. Типово увімкнено. Налаштування → Тест.
+let CARTO_ON=(function(){ try{ return lg('carto_on')!==false; }catch(e){ return true; } })();
+function cartoApplyAll(){
+  Object.keys(mapInstances).forEach(function(id){
+    const st=mapInstances[id]; if(!st || !st._styleLayer) return;
+    try{
+      st._styleLayer.options.minZoom = CARTO_ON ? HYB_NLSC_ZMIN-1 : MAP_MIN_ZOOM;
+      st._hybTilt=null; hybTiltSync(st);
+      st._styleLayer._hybO=null; st._styleLayer.redraw(); st.map.fire('zoomend');
+    }catch(e){ console.warn('[carto]', e); }
+  });
+}
+function setCartoOn(on){
+  CARTO_ON=!!on; try{ ls('carto_on', CARTO_ON); }catch(e){}
+  cartoApplyAll(); sht(CARTO_ON?'Carto увімкнено':'Carto вимкнено — карта лише NLSC');
+}
 const HYB_FAR_FADE_END=16.5;
 function hybFarOpacity(z){ return Math.max(0,Math.min(1,1-(z-HYB_NLSC_ZMIN)/(HYB_FAR_FADE_END-HYB_NLSC_ZMIN))); }
 function hybFadeBind(layer,map,fn){
   const upd=function(){
     try{
       const c=layer.getContainer(); if(!c) return;
-      const z=map.getZoom(), o=fn ? fn(z) : Math.max(0,Math.min(1,(z-(HYB_NLSC_ZMIN-1))/1));
+      const z=map.getZoom(), o=fn ? fn(z) : (CARTO_ON ? Math.max(0,Math.min(1,(z-(HYB_NLSC_ZMIN-1))/1)) : 1);
       if(layer._hybO!=null && Math.abs(o-layer._hybO)<0.02 && o!==0 && o!==1) return;
       if(o===layer._hybO) return;
       const jump=(layer._hybO!=null && Math.abs(o-layer._hybO)>0.3); // стрибок (кнопки +/−, 14→15): CSS-перехід 0.3 с; під час пінча (малі кроки) — без нього
@@ -8104,6 +8120,9 @@ function hybTiltSync(st){
     if(tilted){
       [st._farLayer, st._baseLayer].forEach(function(l){ try{ if(l && map.hasLayer(l)) map.removeLayer(l); }catch(e){} });
       map.setMinZoom(TILT_MIN_ZOOM); // якщо зум був нижче — Leaflet сам піднімає до 15
+    } else if(!CARTO_ON){ // 24.10.2026: Carto вимкнено — без підкладок, мін. зум 7, NLSC з будь-якого зуму
+      [st._farLayer, st._baseLayer].forEach(function(l){ try{ if(l && map.hasLayer(l)) map.removeLayer(l); }catch(e){} });
+      map.setMinZoom(MAP_MIN_ZOOM);
     } else {
       map.setMinZoom(MAP_MIN_ZOOM);
       if(!st._farLayer) st._farLayer=hybMakeUnder(map,{maxZoom:19, maxNativeZoom:HYB_NLSC_ZMIN-1, cache:true});
@@ -8120,7 +8139,7 @@ function mapStyleApply(st){
   try{ if(st.hybridLayer && map.hasLayer(st.hybridLayer)) map.removeLayer(st.hybridLayer); }catch(e){}
   try{ if(st.cartoLabelsLayer && map.hasLayer(st.cartoLabelsLayer)) map.removeLayer(st.cartoLabelsLayer); }catch(e){}
   if(st._styleLayer) return;
-  const lay=new NlscLayer(def.url,{maxZoom:19, minZoom:HYB_NLSC_ZMIN-1, keepBuffer:0, onTileSource:function(src){ reportTileSource(st,src); }, tileFilter:function(c,l){ return tileWinAccept(st,c,l); }}); // 20.10.2026: фільтр трапеції під нахилом (раніше NLSC вантажив весь квадрат: 122 тайли замість ~70). 19.10.2026: гібрид — NLSC лише з зуму 15
+  const lay=new NlscLayer(def.url,{maxZoom:19, minZoom:(CARTO_ON?HYB_NLSC_ZMIN-1:MAP_MIN_ZOOM), keepBuffer:0, onTileSource:function(src){ reportTileSource(st,src); }, tileFilter:function(c,l){ return tileWinAccept(st,c,l); }}); // 20.10.2026: фільтр трапеції під нахилом (раніше NLSC вантажив весь квадрат: 122 тайли замість ~70). 19.10.2026: гібрид — NLSC лише з зуму 15
   lay.on('tileload',function(e){ try{ e.tile.dataset.z=e.coords.z; e.tile.dataset.x=e.coords.x; e.tile.dataset.y=e.coords.y; e.tile.dataset.src='style:'+def.id; }catch(err){} });
   lay.addTo(map);
   try{ lay.bringToBack(); }catch(e){}
@@ -9976,6 +9995,11 @@ map.on('resize move zoom', ()=>{ scheduleNowDraw(st); scheduleWindDraw(st); });
     if(v && v.contains(st.map.getBounds())) return;
     if(st._brandPanT) clearTimeout(st._brandPanT);
     st._brandPanT=setTimeout(()=>{ st._brandPanT=null; try{ refreshBrandMarkers(st); }catch(e){} }, 350);
+  });
+  // 24.10.2026: POI-мережі й камери — перемальовка за зумом/видимою областю (див. poiViewMaybeRefresh); дебаунс 300 мс, а всередині — лише коли справді треба
+  map.on('moveend zoomend', ()=>{
+    if(st._poiViewT) clearTimeout(st._poiViewT);
+    st._poiViewT=setTimeout(()=>{ st._poiViewT=null; try{ poiViewMaybeRefresh(st); }catch(e){} }, 300);
   });
   let wxPanDebounceTimer=null;
   map.on('moveend', ()=>{
@@ -12729,6 +12753,40 @@ function refreshHomeMarkerEverywhere(){
 // за межі вже намальованої зони (див. moveend у initLeafletMap), тож під час їзди це відбувається рідко.
 let POI_CORR = Object.assign({on:true, m:500}, lg('poicorr')||{});
 const POI_CORR_MAX_MARKERS = 500;
+// 24.10.2026: ВИДИМІСТЬ POI-МЕРЕЖ І КАМЕР ЗА ЗУМОМ (логіка з vTrip): показуємо лише від зуму POI_VIEW_MIN_ZOOM (13) і лише точки у видимій області (+запас),
+// не більше POI_VIEW_MAX_MARKERS (250) найближчих до центру для POI та CAM_VIEW_MAX_MARKERS для камер. Замість радіусів POI_RADIUS_M (3 км) / CAM_EDIT_RADIUS_M (8 км).
+// «Улюблене» і власні категорії («Мої закладки») — БЕЗ змін: завжди видимі, без зуму/радіуса. Режим «POI вздовж маршруту» (смуга) теж без змін.
+const POI_VIEW_MIN_ZOOM = 13, POI_VIEW_MAX_MARKERS = 250, CAM_VIEW_MAX_MARKERS = 500, POI_VIEW_PAD = 0.3;
+function poiAnyBrandOn(){ return Object.keys(POI_BRAND_KEY).some(function(b){ return POI_TOGGLES[POI_BRAND_KEY[b]]; }); }
+function poiViewVisibleSet(st, center){
+  const set=new Set(), z=st.map.getZoom();
+  st._poiViewZ=(z>=POI_VIEW_MIN_ZOOM); st._poiViewB=null;
+  if(!st._poiViewZ) return set;
+  const b=st.map.getBounds().pad(POI_VIEW_PAD); st._poiViewB=b;
+  const toiletsOn=POI_TOGGLES.toilets, arr=[];
+  POI_BRANDS_DB.forEach(function(p){
+    const key=POI_BRAND_KEY[p.brand];
+    if(!key || key==='favorite' || poiCustomByKey(key)) return;
+    if(!(POI_TOGGLES[key] || (toiletsOn && p.toilet==='yes'))) return;
+    if(!b.contains([p.lat,p.lon])) return;
+    const dy=p.lat-center.lat, dx=p.lon-center.lng;
+    arr.push({p:p, d:dx*dx+dy*dy});
+  });
+  if(arr.length>POI_VIEW_MAX_MARKERS){ arr.sort(function(a,c){ return a.d-c.d; }); arr.length=POI_VIEW_MAX_MARKERS; }
+  arr.forEach(function(x){ set.add(x.p); });
+  return set;
+}
+// після руху/зуму карти: перемалювати POI/камери, лише якщо перетнули поріг зуму або екран вийшов за межі вже намальованої зони
+function poiViewMaybeRefresh(st){
+  if(!st || !st.map) return;
+  const z=st.map.getZoom(), zOk=(z>=POI_VIEW_MIN_ZOOM), view=st.map.getBounds();
+  if(!poiCorridorActive() && poiAnyBrandOn()){
+    if(zOk!==st._poiViewZ || (zOk && !(st._poiViewB && st._poiViewB.contains(view)))) refreshBrandMarkers(st);
+  }
+  if(st.camEditorMode){
+    if(zOk!==st._camViewZ || (zOk && !(st._camViewB && st._camViewB.contains(view)))) drawCamEditMarkers(st);
+  }
+}
 let _poiCorrCache = null; // {route, m, dbRef, dbLen, set}
 function savePoiCorr(){ ls('poicorr', POI_CORR); }
 function poiCorridorActive(){
@@ -12826,6 +12884,7 @@ function refreshBrandMarkers(st){
   const toiletsOn = POI_TOGGLES.toilets;
   const corrMode = poiCorridorActive(); // 04.10.2026: смуга вздовж маршруту замість радіуса 3 км
   const corrAllowed = corrMode ? poiCorridorVisibleSet(st, center) : null;
+  const viewAllowed = corrMode ? null : poiViewVisibleSet(st, center); // 24.10.2026: зум ≥13 + видима область + макс. 250 (замість радіуса 3 км)
   if(!corrMode) st._brandView=null;
   POI_BRANDS_DB.forEach(function(p){
     const key=POI_BRAND_KEY[p.brand];
@@ -12848,7 +12907,7 @@ function refreshBrandMarkers(st){
     // 04.10.2026: власні категорії користувача (poiCustomByKey) — теж БЕЗ радіуса, як «Улюблене»: це особисті мітки, мають бути видимі завжди
     if(key!=='favorite' && !poiCustomByKey(key)){
       if(corrMode){ if(!corrAllowed.has(p)) return; }
-      else if(haversineM(center.lat, center.lng, p.lat, p.lon) > POI_RADIUS_M) return;
+      else if(!viewAllowed.has(p)) return; // 24.10.2026: було: haversineM(...) > POI_RADIUS_M
     }
     // 20.08.2026: раніше "зачинено зараз" повністю ХОВАЛО точку —
     // виглядало як "імпорт ніби спрацював, а на карті нічого нема" для
@@ -12957,7 +13016,7 @@ function refreshBrandMarkers(st){
   // Стара generic-база АЗС (legacy, без hours/toilet) — лишається як фолбек
   // для тих, хто раніше завантажив офлайн-GPX. Не показується під час
   // фільтра "Туалети" (бо для неї невідомо, є там туалет чи ні).
-  if(POI_TOGGLES.fuel && !POI_TOGGLES.toilets){
+  if(POI_TOGGLES.fuel && !POI_TOGGLES.toilets && !corrMode && st.map.getZoom()>=POI_VIEW_MIN_ZOOM){ // 24.10.2026: + поріг зуму 13
     POI_FUEL.forEach(function(p){
       if(haversineM(center.lat, center.lng, p.lat, p.lon) > POI_RADIUS_M) return;
       const icon=L.divIcon({className:'poi-div-icon', html:'<div style="font-size:22px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6));"><svg viewBox="0 0 24 24" width="14" height="14" style="vertical-align:-2px;" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v16M4 21h8M4 10h8M14 9l2.5 2v6a1.3 1.3 0 0 0 2.6 0V9.8a1.8 1.8 0 0 0-.53-1.28L16 6"/></svg></div>', iconSize:[26,26], iconAnchor:[13,13]});
@@ -12968,7 +13027,7 @@ function refreshBrandMarkers(st){
       count++;
     });
   }
-  if(POI_TOGGLES.toilets){
+  if(POI_TOGGLES.toilets && st.map.getZoom()>=POI_VIEW_MIN_ZOOM){ // 24.10.2026: + поріг зуму 13
     fetchAndDrawPublicToilets(st); // доповнює офлайн-точки живими даними з OSM
   }
   return count;
@@ -13967,6 +14026,15 @@ function drawCamEditMarkers(st){
   clearCamEditMarkers(st);
   const center=st.map.getCenter();
   let count=0;
+  // 24.10.2026: камери — від зуму 13, лише у видимій області (+запас), не більше CAM_VIEW_MAX_MARKERS найближчих до центру (замість радіуса 8 км)
+  const _camZ=(st.map.getZoom()>=POI_VIEW_MIN_ZOOM); st._camViewZ=_camZ; st._camViewB=null;
+  if(!_camZ) return 0;
+  const _camB=st.map.getBounds().pad(POI_VIEW_PAD); st._camViewB=_camB;
+  const _camAllowed=new Set(), _camArr=[];
+  CAMERAS_DB.forEach(function(c){ if(!c.deleted && _camB.contains([c.lat,c.lon])){ const dy=c.lat-center.lat, dx=c.lon-center.lng; _camArr.push({c:c,d:dx*dx+dy*dy}); } });
+  PENDING_CAMS.forEach(function(c){ if(_camB.contains([c.lat,c.lon])){ const dy=c.lat-center.lat, dx=c.lon-center.lng; _camArr.push({c:c,d:dx*dx+dy*dy}); } });
+  if(_camArr.length>CAM_VIEW_MAX_MARKERS){ _camArr.sort(function(a,b){ return a.d-b.d; }); _camArr.length=CAM_VIEW_MAX_MARKERS; }
+  _camArr.forEach(function(x){ _camAllowed.add(x.c); });
   // 25.08.2026: тап по маркеру камери в РЕЖИМІ БУЛАВКИ (routePlanMode, і
   // саме не через кнопку 📷 — див. camAddModeViaBtn вище) відкриває меню
   // Старт/Проміжна/Фініш у координатах камери, так само як тап по
@@ -13976,7 +14044,7 @@ function drawCamEditMarkers(st){
   // щойно відкритий попап і замінює його меню булавки, коли це доречно.
   CAMERAS_DB.forEach(function(c){
     if(c.deleted) return; // 09.09.2026: надгробок — на карті не показуємо
-    if(haversineM(center.lat, center.lng, c.lat, c.lon) > CAM_EDIT_RADIUS_M) return;
+    if(!_camAllowed.has(c)) return; // 24.10.2026: було: haversineM(...) > CAM_EDIT_RADIUS_M
     const needsDir = !!(c.needsDir && c.dir==null); // 09.09.2026: влита через Сигнали, напрям досі не задано
     const marker=L.marker([c.lat,c.lon], {icon:camEditIcon(c.mobile?'#f1c40f':'#3498db', c.dir, needsDir)}).addTo(st.map);
     mirrorMarkerToFlatLayer(st, marker);
@@ -13989,7 +14057,7 @@ function drawCamEditMarkers(st){
     count++;
   });
   PENDING_CAMS.forEach(function(p){
-    if(haversineM(center.lat, center.lng, p.lat, p.lon) > CAM_EDIT_RADIUS_M) return;
+    if(!_camAllowed.has(p)) return; // 24.10.2026: було: радіус CAM_EDIT_RADIUS_M
     const marker=L.marker([p.lat,p.lon], {icon:camEditIcon('#e67e22', p.dir)}).addTo(st.map);
     mirrorMarkerToFlatLayer(st, marker);
     marker.bindPopup('<div style="color:#111;font-size:13px;font-weight:700;"><svg viewBox="0 0 24 24" width="14" height="14" style="vertical-align:-2px;" fill="currentColor"><path d="M9 4L7.5 6H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3.5L15 4H9zm3 5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9z"/></svg> '+(p.limit!=null?p.limit+' км/год':'без ліміту')+' (нова, ще не влита в базу)<br>'+(p.dir!=null?'напрям: '+Math.round(p.dir)+'°':'обидва напрямки')+'<br><span style="font-weight:400;color:#666;font-size:11px;">довгий тап тут — редагувати</span></div>');
@@ -18186,7 +18254,11 @@ function simSetEnabled(on){
 function renderTestSettingsTab(body){
   const bs='flex:1;padding:10px;border:none;border-radius:9px;background:#222;color:#fff;font-size:13px;font-weight:600;'; // 13.10.2026: єдиний стиль кнопок меню (як .ab)
   body.innerHTML=
-    '<div class="gt">🛵 Скутер на карті</div>'
+    '<div class="gt">🗺 Карта</div>'
+    +'<div style="display:flex;align-items:center;gap:12px;padding:3px 5px 12px;">'
+    +'<label class="tsw"><input type="checkbox" id="ai_carto_on" '+(CARTO_ON?'checked':'')+' onchange="setCartoOn(this.checked)"><span class="sldr"></span></label>'
+    +'<span style="font-size:14px;font-weight:600;min-width:0;">Підкладка Carto (низькі зуми). Вимкнено — лише NLSC з будь-якого зуму</span></div>'
+    +'<div class="gt">🛵 Скутер на карті</div>'
     +'<div style="display:flex;align-items:center;gap:12px;padding:3px 5px 12px;">'
     +'<label class="tsw"><input type="checkbox" id="ai_scooter_on" '+(SCOOTER_ON?'checked':'')+' onchange="toggleScooterIcon()"><span class="sldr"></span></label>'
     +'<span style="font-size:14px;font-weight:600;min-width:0;">Скутер замість червоної крапки (центр скутера = позиція GPS)</span></div>'
