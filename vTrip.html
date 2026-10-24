@@ -273,7 +273,7 @@ input[type=text],input[type=password],select{flex:1;min-width:0;font:inherit;col
    • localStorage з префіксом 'ar_' (ключі API: cwaKey, tomtomKey, orsKey, cartoKey, googleApiKey; POI: poibrandsdb, poicustomcats)
    • IndexedDB 'vracer-map' v2: стор 'tiles' (ключ z_x_y), стор 'files' (mbtilesFile, routeFile, sqlWasmCache)
    Власні налаштування vTrip — ключі 'ar_vt_*' (щоб не псувати налаштування VRacer: 'ar_mapcfg' лише ЧИТАЄМО). */
-const BUILD='24.10.2026 16:07';
+const BUILD='25.10.2026 02:12';
 const $=id=>document.getElementById(id);
 function lg(k){try{const s=localStorage.getItem('ar_'+k);return s?JSON.parse(s):null;}catch(e){return null;}}
 function ls(k,v){try{localStorage.setItem('ar_'+k,JSON.stringify(v));}catch(e){}}
@@ -321,6 +321,7 @@ function cacheZ(){ const s=SHARED(); return [s.cacheZoomMin!=null?s.cacheZoomMin
 // сумісність з кодом погоди, перенесеним із VRacer (там читається MapCfg.nowEnabled / windEnabled)
 const MapCfg={ get nowEnabled(){return CFG.radar;}, get windEnabled(){return CFG.wind;} };
 
+const DEFAULT_API_BASE='https://vtrip-proxy.tobedisk.workers.dev';
 /* ── ключі API (ті самі, що у VRacer) ── */
 const KEYDEFS=[
   {k:'cwaKey',     name:'CWA (радар, вітер)',  hint:'opendata.cwa.gov.tw'},
@@ -328,10 +329,25 @@ const KEYDEFS=[
   {k:'tomtomKey',  name:'TomTom',              hint:'запасний веломаршрут'},
   {k:'cartoKey',   name:'Carto (необов\'язково)', hint:''},
   {k:'tdxId',      name:'TDX Client ID',       hint:'tdx.transportdata.tw'},
-  {k:'tdxSecret',  name:'TDX Client Secret',   hint:''}
+  {k:'tdxSecret',  name:'TDX Client Secret',   hint:''},
+  {k:'apiBase',    name:'Проксі (URL)',        hint:DEFAULT_API_BASE+' · «off» = без проксі', plain:true}
 ];
 function getKey(k){ const v=lg(k); return (typeof v==='string'?v:'').trim(); }
 function getCartoApiKey(){ return getKey('cartoKey'); }
+/* ── Проксі (Cloudflare Worker): ключі лишаються в застосунку й шлються заголовками; при збої — прямий запасний шлях ── */
+function getApiMode(){ const m=getKey('apiMode'); return (m==='proxy'||m==='direct')?m:'auto'; } // auto = проксі + запасний прямий шлях · proxy = ТІЛЬКИ проксі · direct = без проксі
+function getApiBase(){ const v=getKey('apiBase'); if(v==='off'||getApiMode()==='direct') return ''; return (v||DEFAULT_API_BASE).replace(/\/+$/,''); }
+// Повертає Response від проксі або null (мережа/403/502/503/504 → пробуємо прямий шлях). 401/429/404 та успіх віддаємо як є.
+async function pxTry(path, init){
+  const base=getApiBase(); if(!base) return null;
+  try{
+    const r=await fetch(base+path, init);
+    if(getApiMode()==='proxy') return r;                                   // «тільки проксі»: без запасного шляху
+    if(r.status===403||r.status===502||r.status===503||r.status===504) return null;
+    return r;
+  }catch(e){ if(e&&e.name==='AbortError') throw e; if(getApiMode()==='proxy') throw e; return null; }
+}
+
 
 /* ── день/ніч ── */
 function isDay(){
@@ -702,7 +718,9 @@ async function fetchPrecipForecast(gridPoints){
   const lons = gridPoints.map(function(p){ return p.lon.toFixed(4); }).join(',');
   const url = 'https://api.open-meteo.com/v1/forecast?latitude='+lats+'&longitude='+lons+
     '&minutely_15=precipitation&forecast_minutely_15='+WX_FRAME_COUNT+'&timezone=auto&_='+Date.now();
-  const res = await fetch(url, {cache:'no-store'});
+  const pxq='/openmeteo/v1/forecast?latitude='+lats+'&longitude='+lons+'&minutely_15=precipitation&forecast_minutely_15='+WX_FRAME_COUNT+'&timezone=auto';
+  let res = await pxTry(pxq, {cache:'no-store'});
+  if(!res || (!res.ok && getApiMode()!=='proxy')) res = await fetch(url, {cache:'no-store'});
   if(!res.ok) throw new Error('Open-Meteo HTTP '+res.status);
   const data = await res.json();
   const arr = Array.isArray(data) ? data : [data]; // якщо запит на ОДНУ точку — Open-Meteo віддає об'єкт, не масив; підстраховуємось
@@ -744,6 +762,13 @@ const CWA_PNG_ID='O-A0058-006';        // 06.10.2026: прозорий PNG ра�
 const CWA={ann:false, src:'', pngBadUntil:0, canvas:null, vals:null, nx:0, ny:0, res:0.0125, lonS:115, latS:18, dt:'', lon0:115, lon1:126.5, lat0:18, lat1:29, loading:null};
 function getCwaApiKey(){ return (lg('cwaKey')||'').trim(); }
 function setCwaApiKey(k){ ls('cwaKey', (k||'').trim()); }
+// CWA: спершу через проксі (ключ — заголовок X-Api-Key), інакше напряму
+async function cwaFetch(id, init){
+  const key=getCwaApiKey(); if(!key) throw new Error('Немає ключа CWA');
+  const i2=Object.assign({}, init||{}); i2.headers={'X-Api-Key':key,'Accept':'application/json'};
+  const r=await pxTry('/cwa/fileapi/v1/opendataapi/'+id+'?downloadType=WEB&format=JSON', i2);
+  return r || fetch(cwaUrl(id), init);
+}
 function cwaUrl(id){
   const key=getCwaApiKey();
   if(!key) throw new Error('Немає ключа CWA');
@@ -751,7 +776,7 @@ function cwaUrl(id){
 }
 // Легка перевірка ключа (1 КБ)
 async function cwaFetchMeta(){
-  const resp=await fetch(cwaUrl(CWA_META_ID));
+  const resp=await cwaFetch(CWA_META_ID);
   if(!resp.ok) throw new Error('HTTP '+resp.status);
   const data=await resp.json();
   const ds=data.cwaopendata.dataset;
@@ -978,7 +1003,7 @@ async function cwaLoadPngCore(){
   const ctl0=(typeof AbortController!=='undefined') ? new AbortController() : null;
   const tm0=ctl0 ? setTimeout(function(){ ctl0.abort(); }, 30000) : null;
   let resp;
-  try{ resp=await fetch(cwaUrl(CWA_PNG_ID), ctl0 ? {signal:ctl0.signal} : undefined); }
+  try{ resp=await cwaFetch(CWA_PNG_ID, ctl0 ? {signal:ctl0.signal} : undefined); }
   finally { if(tm0) clearTimeout(tm0); }
   if(!resp.ok) throw new Error('PNG meta HTTP '+resp.status);
   const meta=await resp.json();
@@ -1103,7 +1128,9 @@ async function windFetch(id){
   const ctl=(typeof AbortController!=='undefined') ? new AbortController() : null;
   const tm=ctl ? setTimeout(function(){ ctl.abort(); }, 30000) : null;
   try{
-    const resp=await fetch('https://opendata.cwa.gov.tw/api/v1/rest/datastore/'+encodeURIComponent(id)+'?Authorization='+encodeURIComponent(key)+'&format=JSON', ctl ? {signal:ctl.signal} : undefined);
+    const pi=ctl ? {signal:ctl.signal} : {}; pi.headers={'X-Api-Key':key,'Accept':'application/json'};
+    const resp=(await pxTry('/cwa/api/v1/rest/datastore/'+encodeURIComponent(id)+'?format=JSON', pi)) ||
+      await fetch('https://opendata.cwa.gov.tw/api/v1/rest/datastore/'+encodeURIComponent(id)+'?Authorization='+encodeURIComponent(key)+'&format=JSON', ctl ? {signal:ctl.signal} : undefined);
     if(!resp.ok) throw new Error('вітер '+id+': HTTP '+resp.status);
     return await resp.json();
   } finally { if(tm) clearTimeout(tm); }
@@ -1729,8 +1756,13 @@ function tdxGet(path){
     const wait=TDX_BLOCK_UNTIL-Date.now();
     if(wait>0){ const e=new Error('ліміт запитів TDX (429): повтор через '+Math.ceil(wait/1000)+' с'); e.status=429; throw e; }
     for(let a=0;a<2;a++){
-      const t=await tdxToken(a>0);
-      const r=await fetch(TDX_API+path,{headers:{Authorization:'Bearer '+t,Accept:'application/json'}});
+      let r=null;
+      const pid=getKey('tdxId'), psec=getKey('tdxSecret');
+      if(a===0 && pid && psec) r=await pxTry('/tdx/'+path,{headers:{'X-Tdx-Id':pid,'X-Tdx-Secret':psec,Accept:'application/json'}});
+      if(!r){
+        const t=await tdxToken(a>0);
+        r=await fetch(TDX_API+path,{headers:{Authorization:'Bearer '+t,Accept:'application/json'}});
+      }
       if(r.status===401 && a===0) continue;
       if(r.status===429){
         const ra=parseInt(r.headers.get('Retry-After')||'0',10); TDX_BLOCK_UNTIL=Date.now()+Math.max(60,ra||0)*1000;
@@ -1833,10 +1865,17 @@ $('rtFileIn').onchange=async e=>{
 /* ── Налаштування ── */
 function renderKeys(){
   const box=$('keys'); box.innerHTML='';
+  { const row=document.createElement('div'); row.className='row';
+    const lb=document.createElement('label'); lb.textContent='Режим API'; lb.style.flex='0 0 110px';
+    const sel=document.createElement('select'); sel.style.flex='1';
+    [['auto','Нормальний: проксі + запасний прямий шлях'],['proxy','Тільки проксі (для тесту)'],['direct','Без проксі (напряму)']].forEach(o=>{ const op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; sel.appendChild(op); });
+    sel.value=getApiMode();
+    sel.onchange=()=>{ ls('apiMode',sel.value); sht('🌐 Режим API: '+sel.options[sel.selectedIndex].textContent); };
+    row.appendChild(lb); row.appendChild(sel); box.appendChild(row); }
   KEYDEFS.forEach(d=>{
     const row=document.createElement('div'); row.className='row';
     const lb=document.createElement('label'); lb.textContent=d.name; lb.style.flex='0 0 110px';
-    const inp=document.createElement('input'); inp.type='password'; inp.value=getKey(d.k); inp.placeholder=d.hint||''; inp.autocomplete='off'; inp.autocapitalize='off'; inp.spellcheck=false;
+    const inp=document.createElement('input'); inp.type=d.plain?'text':'password'; inp.value=getKey(d.k); inp.placeholder=d.hint||''; inp.autocomplete='off'; inp.autocapitalize='off'; inp.spellcheck=false;
     const eye=document.createElement('button'); eye.className='btn sec2'; eye.textContent='👁'; eye.onclick=()=>{ inp.type=inp.type==='password'?'text':'password'; };
     const sv=document.createElement('button'); sv.className='btn'; sv.textContent='💾';
     const save=()=>{ ls(d.k,inp.value.trim()); sht('🔑 '+d.name+(inp.value.trim()?' збережено':' очищено')); if(d.k.startsWith('tdx')) ls('tdxtoken',null); };
@@ -1938,7 +1977,7 @@ async function ybLoadCb(c){
     let e=YB.cb[n];
     if(!e || Date.now()-e.t>100000){
       if(e&&e.err&&Date.now()-e.t<40000){ err=e.err; continue; }
-      try{ const r=await fetch('https://api.citybik.es/v2/networks/'+n+'?fields=stations',{cache:'no-store'}); if(!r.ok) throw new Error('HTTP '+r.status);
+      try{ let r=await pxTry('/citybikes/v2/networks/'+n+'?fields=stations',{cache:'no-store'}); if(!r) r=await fetch('https://api.citybik.es/v2/networks/'+n+'?fields=stations',{cache:'no-store'}); if(!r.ok) throw new Error('HTTP '+r.status);
         const j=await r.json(); const st=(j.network&&j.network.stations)||[];
         e={t:Date.now(),list:st.filter(x=>isFinite(x.latitude)&&isFinite(x.longitude)).map(x=>({name:x.name,lat:+x.latitude,lon:+x.longitude,rent:ybNum(x.free_bikes),ret:ybNum(x.empty_slots),st:1,t:x.timestamp,eb:ybNum(x.extra&&x.extra.ebikes),nb:ybNum(x.extra&&x.extra.normal_bikes)}))};
         dbgEv('CityBikes '+n+': '+e.list.length+' станцій'); }
