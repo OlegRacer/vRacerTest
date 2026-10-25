@@ -274,7 +274,7 @@ input[type=text],input[type=password],select{flex:1;min-width:0;font:inherit;col
    • localStorage з префіксом 'ar_' (ключі API: cwaKey, tomtomKey, orsKey, cartoKey, googleApiKey; POI: poibrandsdb, poicustomcats)
    • IndexedDB 'vracer-map' v2: стор 'tiles' (ключ z_x_y), стор 'files' (mbtilesFile, routeFile, sqlWasmCache)
    Власні налаштування vTrip — ключі 'ar_vt_*' (щоб не псувати налаштування VRacer: 'ar_mapcfg' лише ЧИТАЄМО). */
-const BUILD='25.10.2026 10:45';
+const BUILD='25.10.2026 10:51';
 const $=id=>document.getElementById(id);
 function lg(k){try{const s=localStorage.getItem('ar_'+k);return s?JSON.parse(s):null;}catch(e){return null;}}
 function ls(k,v){try{localStorage.setItem('ar_'+k,JSON.stringify(v));}catch(e){}}
@@ -2227,9 +2227,12 @@ async function trBoard(s,full){
   let sched=[], live=[];
   const loadSched=async()=>{ try{
     const sk=s.id+'|'+now.date; if(TR.schedC[sk]){ sched=TR.schedC[sk]; return; }   // розклад на день не змінюється — кеш у пам’яті
-    const j=await trTry(['basic/v3/Rail/TRA/DailyTrainTimetable/Today/Station/'+s.id+'?$format=JSON','basic/v3/Rail/TRA/DailyStationTimetable/Today/Station/'+s.id+'?$format=JSON','basic/v2/Rail/TRA/DailyTimetable/Station/'+s.id+'/'+now.date+'?$format=JSON']);
-    sched=ybArr(j).map(norm).filter(r=>trMin(r.dep)!=null);
+    // 25.10.2026: журнал — DailyTrainTimetable/Today/Station дає 404 (переставлено в кінець); DailyStationTimetable дає 200, але записи вкладені в StationTimetables[].TimeTables[] → розгортаємо
+    const j=await trTry(['basic/v3/Rail/TRA/DailyStationTimetable/Today/Station/'+s.id+'?$format=JSON','basic/v2/Rail/TRA/DailyTimetable/Station/'+s.id+'/'+now.date+'?$format=JSON','basic/v3/Rail/TRA/DailyTrainTimetable/Today/Station/'+s.id+'?$format=JSON']);
+    const raw=[]; ybArr(j).forEach(x=>{ if(x&&Array.isArray(x.TimeTables)) x.TimeTables.forEach(t=>raw.push(t)); else raw.push(x); });
+    sched=raw.map(norm).filter(r=>trMin(r.dep)!=null);
     if(sched.length) TR.schedC[sk]=sched;
+    else dbgEv('TRA розклад '+s.name+': сирих записів '+raw.length+', після розбору 0; зразок: '+JSON.stringify(raw[0]||null).slice(0,400));
   }catch(e){ dbgEv('TRA розклад станції '+s.name+': '+e.message); if(full) throw e; } };
   const loadLive=async()=>{ try{
     const all=await trLiveAll();
@@ -2283,7 +2286,8 @@ if(CFG.tr) setTimeout(()=>trSet(true),2500);
 /* ═══════════ vTrip · автобуси (TDX) ═══════════
    Зупинки (станції) навколо центру карти → тап → прогноз прибуття по маршрутах.
    Спершу $spatialFilter=nearby(...) на рівні міста; якщо TDX його не приймає — вантажимо всі станції міста й кешуємо в IDB на 7 днів. */
-const BUS={st:{},layer:L.layerGroup().addTo(map),deb:null,fullCity:{},got:{},err:null,eta:{},uid2st:{},areaP:null,areaLast:null,nbUntil:0};
+const BUS={st:{},layer:L.layerGroup().addTo(map),deb:null,fullCity:{},got:{},err:null,eta:{},uid2st:{},areaP:null,areaLast:null,nbUntil:0,nbWhy:''};
+{ const n4=lg('vt_nb404'); if(n4&&Date.now()-n4<7*864e5){ BUS.nbUntil=n4+7*864e5; BUS.nbWhy='HTTP 404 (запам’ятано, NearBy недоступний у плані TDX)'; } }   // 25.10.2026: журнал показав 404 → не марнуємо запит, перевірка раз на 7 днів
 const BUS_ETA_TTL=30000, BUS_AREA_R=600;
 /* 25.10.2026: прибуття одним запитом на район (NearBy, без проксі) → кеш BUS.eta[станція] на 30 с.
    Ланцюжок: район → (якщо не вдалось) запит по одній станції, як раніше. */
@@ -2304,7 +2308,7 @@ async function busFetchArea(lat,lon,skip){
       BUS.areaLast={lat:lat,lon:lon,t:now}; dbgEv('Автобуси NearBy: записів '+arr.length+', станцій у кеші '+n); return true;
     }catch(e){
       if(e.status===429) throw e;
-      BUS.nbUntil=Date.now()+5*60000; BUS.nbWhy=String(e.message).slice(0,60); dbgEv('Автобуси NearBy не вдалось ('+e.message+') → по станції, 5 хв без повтору'); return false;
+      BUS.nbUntil=Date.now()+5*60000; BUS.nbWhy=String(e.message).slice(0,60); if(e.status===404){ ls('vt_nb404',Date.now()); BUS.nbUntil=Date.now()+7*864e5; } dbgEv('Автобуси NearBy не вдалось ('+e.message+') → по станції, 5 хв без повтору'); return false;
     }
   })();
   const p=BUS.areaP; p.then(()=>{ if(BUS.areaP===p) BUS.areaP=null; },()=>{ if(BUS.areaP===p) BUS.areaP=null; });
