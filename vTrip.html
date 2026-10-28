@@ -307,7 +307,7 @@ input[type=text],input[type=password],select{flex:1;min-width:0;font:inherit;col
    • localStorage з префіксом 'ar_' (ключі API: cwaKey, tomtomKey, orsKey, cartoKey, googleApiKey; POI: poibrandsdb, poicustomcats)
    • IndexedDB 'vracer-map' v2: стор 'tiles' (ключ z_x_y), стор 'files' (mbtilesFile, routeFile, sqlWasmCache)
    Власні налаштування vTrip — ключі 'ar_vt_*' (щоб не псувати налаштування VRacer: 'ar_mapcfg' лише ЧИТАЄМО). */
-const BUILD='28.10.2026 17:59';
+const BUILD='28.10.2026 18:03';
 const $=id=>document.getElementById(id);
 function lg(k){try{const s=localStorage.getItem('ar_'+k);return s?JSON.parse(s):null;}catch(e){return null;}}
 function ls(k,v){try{localStorage.setItem('ar_'+k,JSON.stringify(v));}catch(e){}}
@@ -1782,7 +1782,8 @@ function poiRender(){
       d.innerHTML='<b></b><div class="note" style="margin:3px 0"></div>';
       d.querySelector('b').textContent=(r.name||poiName(r.brand));
       d.querySelector('.note').textContent=poiName(r.brand)+(r.hours?' · '+r.hours:'')+(r.toilet==='yes'?' · 🚻 є туалет':'');
-      const ag=a?ybAgeMin(a.t):null; if(a){ const i2=document.createElement('div'); i2.className='note'; i2.style.margin='2px 0'; i2.textContent='🕒 дані: '+(ag==null?'час невідомий':(ag<=0?'щойно':ag+' хв тому'))+' · джерело: '+(a.src||'?'); d.appendChild(i2); }
+      const ag=a?ybAgeMin(a.t):null; if(a){ const i2=document.createElement('div'); i2.className='note'; i2.style.margin='2px 0'; i2.textContent='🕒 дані: '+(ag==null?'час невідомий':(ag<=0?'щойно':ag+' хв тому'))+' · джерело: '+(a.src||'?'); d.appendChild(i2);
+        const ch=a.k&&YB.chg&&YB.chg[a.k]; if(ch){ const m2=Math.round((Date.now()-ch.t)/60000), i3=document.createElement('div'); i3.className='note'; i3.style.margin='2px 0'; i3.textContent=(ch.first===ch.t?'🔎 число не змінювалось відколи спостерігаємо ('+m2+' хв)':'🔄 число востаннє змінилось '+(m2<=0?'щойно':m2+' хв тому'))+' (за нашими запитами)'; d.appendChild(i3); } }
       const bt=document.createElement('button'); bt.className='btn'; bt.textContent='🏁 Маршрут сюди'; bt.onclick=()=>{ map.closePopup(); setPoint('fin',{lat:r.lat,lng:r.lon}); }; d.appendChild(bt);
       L.popup({closeButton:false,offset:[0,-8]}).setLatLng([r.lat,r.lon]).setContent(d).openOn(map);
     });
@@ -2113,7 +2114,12 @@ async function ybLoadCb(c){
       try{ let r=await pxTry('/citybikes/v2/networks/'+n+'?fields=stations',{cache:'no-store'}); if(!r) r=await fetch('https://api.citybik.es/v2/networks/'+n+'?fields=stations',{cache:'no-store'}); if(!r.ok) throw new Error('HTTP '+r.status);
         const j=await r.json(); const st=(j.network&&j.network.stations)||[];
         e={t:Date.now(),list:st.filter(x=>isFinite(x.latitude)&&isFinite(x.longitude)).map(x=>({name:x.name,lat:+x.latitude,lon:+x.longitude,rent:ybNum(x.free_bikes),ret:ybNum(x.empty_slots),st:1,t:x.timestamp,eb:ybNum(x.extra&&x.extra.ebikes),nb:ybNum(x.extra&&x.extra.normal_bikes)}))};
-        dbgEv('CityBikes '+n+': '+e.list.length+' станцій'); }
+        dbgEv('CityBikes '+n+': '+e.list.length+' станцій');
+        if(!YB.cbSamp) YB.cbSamp={}; if(!YB.cbSamp[n]){ YB.cbSamp[n]=1; try{ dbgEv('CityBikes зразок сирої станції '+n+': '+JSON.stringify(st[0]).slice(0,500)); }catch(x2){} }
+        // 28.10.2026: спостереження за змінами (якщо джерело не віддає час): коли число на станції востаннє змінилося
+        let chg=0; const prevAt=YB.cbAt&&YB.cbAt[n]; if(!YB.chg) YB.chg={}; if(!YB.cbAt) YB.cbAt={};
+        e.list.forEach(r=>{ r.k=r.lat.toFixed(5)+','+r.lon.toFixed(5); const o=YB.chg[r.k]; if(!o) YB.chg[r.k]={rent:r.rent,ret:r.ret,t:Date.now(),first:Date.now()}; else if(o.rent!==r.rent||o.ret!==r.ret){ o.rent=r.rent; o.ret=r.ret; o.t=Date.now(); chg++; } });
+        YB.cbAt[n]=Date.now(); if(prevAt) dbgEv('CityBikes '+n+': з минулого запиту ('+Math.round((Date.now()-prevAt)/1000)+' с тому) змінилося '+chg+' зі '+e.list.length+' станцій'); }
       catch(x){ e={t:Date.now(),list:[],err:x.message}; dbgEv('CityBikes '+n+': '+x.message); }
       YB.cb[n]=e;
     }
@@ -2139,7 +2145,7 @@ async function ybLoadAvail(c){
   if(YB.loading['a'+c]) return; if(Date.now()-(YB.avAt[c]||0)<110000) return; YB.loading['a'+c]=1;
   try{
     if(cb){ let m=0,withB=0; (YB.st[c]||[]).forEach(x=>{ const q=ybOffFind(cb.idx,x); if(!q) return; m++; if(q.rent>0) withB++;
-        const v={src:'CityBikes',rent:q.rent,ret:q.ret,ok:1,t:q.t,eb:q.eb,nb:q.nb!=null?q.nb:(q.eb!=null&&q.rent!=null?Math.max(0,q.rent-q.eb):null)}; YB.av[x.id]=v; YB.av['id:'+x.sid]=v; });
+        const v={src:'CityBikes',k:q.k,rent:q.rent,ret:q.ret,ok:1,t:q.t,eb:q.eb,nb:q.nb!=null?q.nb:(q.eb!=null&&q.rent!=null?Math.max(0,q.rent-q.eb):null)}; YB.av[x.id]=v; YB.av['id:'+x.sid]=v; });
       if(m>0){ YB.stat[c]={up:m,withB:withB,withD:m,stc:{citybikes:m},n:m,match:m,total:(YB.st[c]||[]).length,path:0,sample:'citybikes'}; delete YB.err[c]; YB.avAt[c]=Date.now();
         dbgEv('YouBike (CityBikes) '+c+': збіг '+m+'/'+(YB.st[c]||[]).length+', з велосипедами '+withB+' · вік даних: '+ybAgeStat(cb.recs,r=>r.t)); return; } }
     const off=await ybLoadOff();
