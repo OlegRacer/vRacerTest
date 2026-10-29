@@ -305,7 +305,7 @@ input[type=text],input[type=password],select{flex:1;min-width:0;font:inherit;col
    • localStorage з префіксом 'ar_' (ключі API: cwaKey, tomtomKey, orsKey, cartoKey, googleApiKey; POI: poibrandsdb, poicustomcats)
    • IndexedDB 'vracer-map' v2: стор 'tiles' (ключ z_x_y), стор 'files' (mbtilesFile, routeFile, sqlWasmCache)
    Власні налаштування vTrip — ключі 'ar_vt_*' (щоб не псувати налаштування VRacer: 'ar_mapcfg' лише ЧИТАЄМО). */
-const BUILD='29.10.2026 23:59';
+const BUILD='30.10.2026 00:09';
 const $=id=>document.getElementById(id);
 function lg(k){try{const s=localStorage.getItem('ar_'+k);return s?JSON.parse(s):null;}catch(e){return null;}}
 function ls(k,v){try{localStorage.setItem('ar_'+k,JSON.stringify(v));}catch(e){}}
@@ -2428,7 +2428,7 @@ async function trBoard(s,full){
   dbgEv('TRA '+s.name+': '+rows.length+' записів ('+src+')');
   rows=rows.filter(r=>trMin(r.dep)!=null && trMin(r.dep)+r.delay>=nm-1).sort((a,b)=>(trMin(a.dep)+a.delay)-(trMin(b.dep)+b.delay)).slice(0,full?400:8);
   if(!rows.length) return 'Сьогодні більше відправлень немає (записів у розкладі: '+(src==='розклад'?'0 після '+now.hm:'0')+').';
-  return (src==='live'||full?'':'<div class="note">Табло порожнє — показано за розкладом</div>')+'<div style="max-height:'+(full?'46vh':'30vh')+';overflow:auto">'+rows.map(r=>'<div class="trrow"'+(r.no?' data-no="'+trEsc(r.no)+'"':'')+'><b>'+r.dep+'</b><span>'+trEsc(r.type)+' → '+trEsc(r.to)+'</span>'+(r.delay>0?'<span class="late">+'+r.delay+' хв</span>':'')+'</div>').join('')+'</div>';
+  return (src==='live'||full?'':'<div class="note">Табло порожнє — показано за розкладом</div>')+'<div style="max-height:'+(full?'46vh':'30vh')+';overflow:auto">'+rows.map(r=>'<div class="trrow"'+(r.no?' data-no="'+trEsc(r.no)+'"':'')+'><b>'+r.dep+'</b><span>'+trEsc(r.type)+(r.no?' <b style="min-width:0">№'+trEsc(r.no)+'</b>':'')+' → '+trEsc(r.to)+'</span>'+(r.delay>0?'<span class="late">+'+r.delay+' хв</span>':'')+'</div>').join('')+'</div>';
 }
 async function trFind(){
   const out=$('trOut'); await trLoadStations();
@@ -3083,6 +3083,10 @@ function tzRowDays(x,rn){   // перевіряє поля запису (клю�
   if(!found.length) return null; return found[0];
 }
 function tzRunsToday(x,rn){ const d=tzRowDays(x,rn); return !d||d.has(tzToday()); }
+function tzUa(t){   // 30.10.2026: переклад днів тижня й службових слів у розкладі (без мережі, словник)
+  const D={'日':'Нд','一':'Пн','二':'Вт','三':'Ср','四':'Чт','五':'Пт','六':'Сб'};
+  return String(t||'').replace(/(?:星期|週|周)([日一二三四五六、,，\s]+)/g,(m,g)=>Array.from(g).filter(c=>D[c]).map(c=>D[c]).join(', ')).replace(/班表時間/g,'За розкладом').replace(/：\s*/g,': ');
+}
 function tzEst(x){ const m=String((x&&x.est_time)||'').match(/(\d{1,2}):(\d{2})/); return m?(m[1].padStart(2,'0')+':'+m[2]):''; }
 async function tzRtRows(id){ const j=await tyGet('/tyoem?dcfid=lagifRealtimeRouteDetailByRoute&routing_id='+encodeURIComponent(id)); return j.result||[]; }   // 29.10.2026: зупинки маршруту з координатами, часом, затримкою, passd (1 = вже проїхали)
 function tzStopMk(p,x,rn,rid){   // мітка зупинки з часом (очікуваним, якщо відомий, інакше за розкладом)
@@ -3093,7 +3097,7 @@ function tzStopMk(p,x,rn,rid){   // мітка зупинки з часом (о�
     const rows=await tzCached('tzsch1_'+rid,12*3600e3,async()=>{ const j=await tyGet('/tyoem?dcfid=lagifQueryTimeTableDetailByRoute&routing_id='+encodeURIComponent(rid)+'&car_type=lagi'); return j.result||[]; });
     const r=rows.find(q=>q.poi_id===x.poi_id&&q.seq===x.seq)||rows.find(q=>q.poi_id===x.poi_id); if(!r) return; const seen={}, ln=[];
     ['show_arrive_time','show_recycle_arrive_time','show_memo_time','show_recycle_memo_time'].forEach(k=>{ String(r[k]||'').split(/\n|<br\s*\/?>|;/).forEach(t=>{ t=t.trim(); if(/星期/.test(t)&&!seen[t]){ seen[t]=1; ln.push(t); } }); });
-    if(!ln.length) return; const pp=m.getPopup(); pp.setContent(pp.getContent()+'<br>'+ln.map(trEsc).join('<br>')); }catch(e){} });
+    if(!ln.length) return; const pp=m.getPopup(); pp.setContent(pp.getContent()+'<br>'+ln.map(t=>trEsc(tzUa(t))).join('<br>')); }catch(e){} });
   return m;
 }
 async function tzCached(key,ttl,fn){
