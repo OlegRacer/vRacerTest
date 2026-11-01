@@ -178,14 +178,26 @@ html.ar-landscape .map-air-switch.in-route{ top:162px !important; }
 #vtTransitModal .dbgc-body{font-family:'Segoe UI',sans-serif;font-size:14px;padding:14px;}
 #vtTransitModal pre{white-space:pre-wrap;word-break:break-all;font-size:11px;}
 .map-tmp-switch{ display:none; position:absolute; z-index:500; width:46px; height:46px; border-radius:12px; padding:0; flex-direction:column; align-items:center; justify-content:center; gap:1px; left:122px; top:312px !important; background:rgba(20,20,20,0.82); border:none; color:#fff; box-shadow:0 2px 6px rgba(0,0,0,0.5); cursor:pointer; }
-html.ar-landscape .map-tmp-switch{ left:108px; top:272px !important; }
+html.ar-landscape .map-tmp-switch{ left:108px; top:270px !important; }
 .map-tmp-switch.in-route{ top:258px !important; }
 html.ar-landscape .map-tmp-switch.in-route{ top:216px !important; }
 .map-trash-switch{ display:none; position:absolute; z-index:500; width:46px; height:46px; border-radius:12px; padding:0; flex-direction:column; align-items:center; justify-content:center; gap:1px; left:122px; top:366px !important; background:rgba(20,20,20,0.82); border:none; color:#fff; box-shadow:0 2px 6px rgba(0,0,0,0.5); cursor:pointer; }
 .map-trash-switch.in-route{ top:312px !important; }
 /* 01.11.2026: 🗑 переїхав під кнопку «−» (зум); у портреті зуму немає — лишається під «Температурою»; з початком навігації ховається (JS: display:none) */
-html.ar-landscape .map-trash-switch{ position:fixed; left:44px; top:272px !important; width:46px; height:46px; border-radius:12px; z-index:5500; }
-html.ar-landscape .map-trash-switch.in-route{ top:272px !important; }
+html.ar-landscape .map-trash-switch{ position:fixed; left:44px; top:270px !important; width:46px; height:46px; border-radius:12px; z-index:5500; }
+html.ar-landscape .map-trash-switch.in-route{ top:270px !important; }
+/* 01.11.2026: ВЕРТИКАЛЬНИЙ режим — усі кнопки однією колонкою біля лівого краю (крок 54 px). Маршрут активний → «Прогноз» зникає, решта зсувається вгору на його місце. */
+html:not(.ar-landscape) .map-now-switch{ left:12px; top:150px; }
+html:not(.ar-landscape) .map-weather-switch{ left:12px; top:204px; }
+html:not(.ar-landscape) .map-wind-switch{ left:12px; top:258px !important; }
+html:not(.ar-landscape) .map-air-switch{ left:12px; top:312px !important; }
+html:not(.ar-landscape) .map-tmp-switch{ left:12px; top:366px !important; }
+html:not(.ar-landscape) .map-trash-switch{ left:12px; top:420px !important; }
+html:not(.ar-landscape) .map-wind-switch.in-route{ left:12px; top:204px !important; }
+html:not(.ar-landscape) .map-air-switch.in-route{ left:12px; top:258px !important; }
+html:not(.ar-landscape) .map-tmp-switch.in-route{ left:12px; top:312px !important; }
+html:not(.ar-landscape) .map-trash-switch.in-route{ left:12px; top:366px !important; }
+html:not(.ar-landscape) .map-radar-panel{ left:66px !important; top:215px !important; }
 .map-tmp-switch .ic{ display:flex; align-items:center; justify-content:center; height:20px; }
 .map-tmp-switch .lb{ font-size:9px; font-weight:700; line-height:10px; color:inherit; font-family:'JetBrains Mono',monospace; }
 .map-tmp-switch.active{ border:2px solid #fff; }
@@ -726,8 +738,8 @@ html.ar-landscape .map-nav-cammark-btn{bottom:39px; right:156px;}
   cursor:pointer;
 }
 html:not(.ar-landscape) .map-nav-zoom-btn{display:none!important;}
-html.ar-landscape .map-nav-zoom-in-btn{top:167px;}
-html.ar-landscape .map-nav-zoom-out-btn{top:224px;}
+html.ar-landscape .map-nav-zoom-in-btn{top:163px;}   /* 01.11.2026: у рядах решти кнопок (кроки 54 px: 108/162/216/270; кнопка 44 px по центру 46-px ряду) */
+html.ar-landscape .map-nav-zoom-out-btn{top:217px;}
 /* 15.08.2026: панель адреси "Редактора" точок — на висоті кнопки
    "Маршрут" (.map-nav-route-btn: bottom:120px портрет / ТЕПЕР 95px
    альбом — рухається РАЗОМ із самою кнопкою "Маршрут" при перестановці
@@ -1281,7 +1293,7 @@ body.hide-cam-radar .cam-radar-badge{display:none !important;}
 
 <div class="mb" id="em">
   <div class="ms">
-    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 01.11.2026 11:30)</span></h3><button class="mc2" id="emc">✕</button></div>
+    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 01.11.2026 12:15)</span></h3><button class="mc2" id="emc">✕</button></div>
     <div class="tbar">
       <div class="tab a" id="t0" onclick="st(0)">ЕКРАН</div>
       <div class="tab" id="t1" onclick="st(1)">СИГНАЛИ</div>
