@@ -1306,7 +1306,7 @@ body.hide-cam-radar .cam-radar-badge{display:none !important;}
 
 <div class="mb" id="em">
   <div class="ms">
-    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 03.11.2026 09:26)</span></h3><button class="mc2" id="emc">✕</button></div>
+    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 03.11.2026 10:11)</span></h3><button class="mc2" id="emc">✕</button></div>
     <div class="tbar">
       <div class="tab a" id="t0" onclick="st(0)">ЕКРАН</div>
       <div class="tab" id="t1" onclick="st(1)">СИГНАЛИ</div>
@@ -7361,7 +7361,7 @@ function mkTile(tile){
     el.appendChild(mkStopwatchTile(tile));
   }else if(tile.k==='WeatherTile'){
     el.classList.add('weather-tile');
-    el.appendChild(mkWeatherTile());
+    el.appendChild(mkWeatherTile(tile));
   }else if(tile.k==='QuadTile'){
     el.classList.add('quad-tile');
     el.appendChild(mkQuadTile(tile));
@@ -18245,16 +18245,21 @@ setInterval(function(){ try{ wxBgStep(); }catch(e){ console.warn("[wx-bg]", e); 
 
 /* ═══ 02.11.2026 · ПЛИТКА «ПОГОДА» 1×1: 4 кнопки (Дощ, Вітер, Темпер., Повітря) — ті самі перемикачі й вигляд, що на великій карті ═══
    Стан спільний із картою (MapCfg.nowEnabled/windEnabled/tmpEnabled/airEnabled); дані й оповіщення без карти веде wxBgStep. */
-function mkWeatherTile(){
+function mkWeatherTile(tile){
   const wrap=document.createElement('div'); wrap.className='wxt-inner';
-  const defs=[['rain','Дощ','Радар опадів зараз (CWA)'],['wind','Вітер','Вітер зараз (станції CWA)'],['tmp','Темпер.','Температура'],['air','Повітря','Якість повітря (AQI)']];
-  defs.forEach(function(d){
-    const b=document.createElement('button'); b.type='button'; b.className='wxt-btn'; b.setAttribute('data-k',d[0]); b.title=d[2];
-    b.innerHTML='<span class="wl">'+d[1]+'</span><span class="wu"></span><span class="wv"></span>';
+  const titles={rain:'Радар опадів зараз (CWA)', wind:'Вітер зараз (станції CWA)', tmp:'Температура', air:'Якість повітря (AQI)'};
+  q4Slots(tile).forEach(function(k){ // 03.11.2026: порядок і набір полів — із налаштування плитки («Поля»), типово Дощ/Вітер/Темпер./Повітря
+    if(!titles[k]){ // порожнє поле
+      const e=document.createElement('div'); e.className='wxt-btn'; e.setAttribute('data-k','');
+      e.innerHTML='<span class="wl">—</span><span class="wu"></span><span class="wv"></span>'; wrap.appendChild(e); return;
+    }
+    const m=q4Meta(k);
+    const b=document.createElement('button'); b.type='button'; b.className='wxt-btn'; b.setAttribute('data-k',k); b.title=titles[k];
+    b.innerHTML='<span class="wl">'+m.n+'</span><span class="wu"></span><span class="wv"></span>';
     b.addEventListener('click',function(e){
       e.stopPropagation();
-      if((d[0]==='rain' && !MapCfg.nowEnabled || d[0]==='wind' && !MapCfg.windEnabled) && !getCwaApiKey()){ sht('ℹ️ Ключ CWA: введіть у Налаштування → Карта'); return; }
-      if(d[0]==='rain') toggleNowRadar(); else if(d[0]==='wind') toggleWindLayer(); else if(d[0]==='tmp') toggleTmpLayer(); else toggleAirLayer();
+      if((k==='rain' && !MapCfg.nowEnabled || k==='wind' && !MapCfg.windEnabled) && !getCwaApiKey()){ sht('ℹ️ Ключ CWA: введіть у Налаштування → Карта'); return; }
+      if(k==='rain') toggleNowRadar(); else if(k==='wind') toggleWindLayer(); else if(k==='tmp') toggleTmpLayer(); else toggleAirLayer();
       setTimeout(function(){ try{ wxtSync(); }catch(e2){} }, 80);
     });
     wrap.appendChild(b);
@@ -18268,7 +18273,7 @@ function wxtSync(){
   try{ q4Sync(); }catch(e){}
   const els=document.querySelectorAll('.wxt-btn'); if(!els.length) return;
   els.forEach(function(b){
-    const k=b.getAttribute('data-k'), wv=b.querySelector('.wv');
+    const k=b.getAttribute('data-k'), wv=b.querySelector('.wv'); if(!k) return;
     let on=false, val=null, lvl=null;
     if(k==='rain'){ on=!!MapCfg.nowEnabled; if(on && CWA.vals) val=cwaTimeLabel()||null; }
     else if(k==='wind'){ on=!!MapCfg.windEnabled; if(on && WIND.st.length) val=windTimeLabel()||null; }
@@ -18287,14 +18292,24 @@ setInterval(function(){ try{ wxtSync(); }catch(e){} }, 3000);
    Вимірювані параметри оновлює ud() через data-lid (як звичайні плитки); температура/AQI з погоди — q4Sync (раз на 3 с і при зміні даних).
    Усі доступні значення ≤5 символів (RPM ≤12000, Gforce/Inj ≤ «-0.45»), тож у чверть влізають. Стан (warn/alrt/cold) фарбує лише число — див. ca(). */
 function q4Keys(){ return ['RPM','T_Eng','TPS','GPS','Volt','T_Air','Inj_Rate','MAP','Alt','Gforce','Lean','WxTemp','WxAqi']; }
+function q4Slots(tile){ // 03.11.2026: чотири поля плитки; для «Погоди» без збережених — стандартний порядок
+  const d=(tile && tile.k==='WeatherTile')?['rain','wind','tmp','air']:['','','',''];
+  if(!tile || !Array.isArray(tile.slots)) return d;
+  const r=tile.slots.slice(0,4); while(r.length<4) r.push(''); return r;
+}
+function q4KeysFor(tk){ return tk==='WeatherTile'?['rain','wind','tmp','air']:q4Keys(); }
 function q4Meta(k){
+  if(k==='rain') return {n:'Дощ',c:'#3b82f6'};
+  if(k==='wind') return {n:'Вітер',c:'#37e0e6'};
+  if(k==='tmp') return {n:'Темпер.',c:'#ff9f43'};
+  if(k==='air') return {n:'Повітря',c:'#4ade80'};
   if(k==='WxTemp') return {n:'Темпер.',c:'#ff9f43'};
   if(k==='WxAqi') return {n:'Повітря',c:'#4ade80'};
   const p=P[k]; return p?{n:p.n,c:p.c}:null;
 }
 function mkQuadTile(tile){
   const wrap=document.createElement('div'); wrap.className='q4-inner';
-  const sl=Array.isArray(tile.slots)?tile.slots:[];
+  const sl=q4Slots(tile);
   for(let i=0;i<4;i++){
     const k=sl[i]||'', m=k?q4Meta(k):null;
     const c=document.createElement('div'); c.className='q4-cell'+(m?'':' empty');
@@ -18329,7 +18344,7 @@ let _q4Idx=null; // індекс поля, для якого відкрито в
 function q4Fields(pb){
   const g=document.createElement('div'); g.className='gt'; g.textContent='Поля'; pb.appendChild(g);
   const pl=document.createElement('div'); pl.className='pl';
-  const sl=Array.isArray(ptile.slots)?ptile.slots:[];
+  const sl=q4Slots(ptile);
   for(let i=0;i<4;i++){
     const k=sl[i]||'', m=k?q4Meta(k):null;
     const item=document.createElement('div'); item.className='pi';
@@ -18342,8 +18357,8 @@ function q4Fields(pb){
 function q4Picker(pb){
   const g=document.createElement('div'); g.className='gt'; g.textContent='Поле '+(_q4Idx+1)+' — параметр'; pb.appendChild(g);
   const pl=document.createElement('div'); pl.className='pl';
-  const cur=((Array.isArray(ptile.slots)?ptile.slots:[])[_q4Idx])||'';
-  [''].concat(q4Keys()).forEach(function(k){
+  const cur=q4Slots(ptile)[_q4Idx]||'';
+  [''].concat(q4KeysFor(ptile.k)).forEach(function(k){
     const m=k?q4Meta(k):null;
     const item=document.createElement('div'); item.className='pi'+(cur===k?' sel':'');
     item.innerHTML='<div class="pn2">'+(m?m.n:'— порожньо —')+'</div><div class="ck">✓</div>';
@@ -18357,7 +18372,7 @@ function q4Picker(pb){
 }
 function q4Set(i,k){
   if(!ptile) return;
-  const sl=Array.isArray(ptile.slots)?ptile.slots.slice(0,4):[]; while(sl.length<4) sl.push('');
+  const sl=q4Slots(ptile);
   sl[i]=k; ptile.slots=sl; saveLay(); _q4Idx=null; render(); cpk();
 }
 // ── налаштування: ключ CWA
@@ -20978,8 +20993,8 @@ function cpk(){
   
   if(editMode && ptile){
     document.getElementById('pt').textContent='Налаштувати плитку';
-    if(ptile.k==='QuadTile' && _q4Idx!==null){ q4Picker(pb); m.classList.add('sh'); return; } // 03.11.2026: вибір параметра для поля
-    if(ptile.k==='QuadTile'){ q4Fields(pb); } else {
+    if((ptile.k==='QuadTile'||ptile.k==='WeatherTile') && _q4Idx!==null){ q4Picker(pb); m.classList.add('sh'); return; } // 03.11.2026: вибір параметра для поля
+    if(ptile.k==='QuadTile'||ptile.k==='WeatherTile'){ q4Fields(pb); } else {
     const g=document.createElement('div');g.className='gt';g.textContent='Параметр';pb.appendChild(g);
     const pl=document.createElement('div');pl.className='pl';
     Object.keys(P).forEach(k=>{
