@@ -329,7 +329,7 @@ input[type=text],input[type=password],select{flex:1;min-width:0;font:inherit;col
    • localStorage з префіксом 'ar_' (ключі API: cwaKey, tomtomKey, orsKey, cartoKey, googleApiKey; POI: poibrandsdb, poicustomcats)
    • IndexedDB 'vracer-map' v2: стор 'tiles' (ключ z_x_y), стор 'files' (mbtilesFile, routeFile, sqlWasmCache)
    Власні налаштування vTrip — ключі 'ar_vt_*' (щоб не псувати налаштування VRacer: 'ar_mapcfg' лише ЧИТАЄМО). */
-const BUILD='06.11.2026 16:37';
+const BUILD='06.11.2026 16:45';
 const $=id=>document.getElementById(id);
 function lg(k){try{const s=localStorage.getItem('ar_'+k);return s?JSON.parse(s):null;}catch(e){return null;}}
 function ls(k,v){try{localStorage.setItem('ar_'+k,JSON.stringify(v));}catch(e){}}
@@ -1907,7 +1907,7 @@ function openSheet(id){
   if(id==='shRoute'){ $('rtProf').value=CFG.bike; }
 }
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=closeSheets);
-$('dRoute').onclick=()=>openSheet('shRoute'); $('dPoi').onclick=()=>openSheet('shPoi');
+$('dRoute').onclick=()=>{ if(MX.res&&MX.res.length){ if($('shMaas').classList.contains('open')) closeSheets(); else mxOpen(); } else openSheet('shRoute'); }; $('dPoi').onclick=()=>openSheet('shPoi');
 $('dTransit').onclick=()=>openSheet('shTransit'); $('dSet').onclick=()=>openSheet('shSet');
 map.on('click',closeSheets);
 
@@ -3585,11 +3585,11 @@ function mxBikeShow(){ [RT.casing,RT.line].forEach(function(l){ if(l&&!map.hasLa
 function mxOpen(){ closeSheets(); $('shMaas').classList.add('open'); $('dRoute').classList.add('on'); }
 function mxRender(){
   const R=MX.res||[], box=$('mxList'); $('mxList').after($('mxSteps')); box.innerHTML=''; $('mxSteps').innerHTML='';
-  $('mxInfo').textContent=R.length?('Дані за розкладом (відправлення від '+mxHM(R[0].start_time)+'). Тап по варіанту — показати на карті.'):'Варіантів не знайдено. Спробуйте інший фініш або час.';
+  $('mxInfo').textContent=R.length?('Дані за розкладом (відправлення від '+mxHM(R[0].start_time)+'). Тап по варіанту — показати на карті, ще раз — згорнути кроки. ✕ — закрити лист і дивитись карту; повернутись — вкладка «Маршрут».'):'Варіантів не знайдено. Спробуйте інший фініш або час.';
   R.forEach(function(rt,i){
     const d=document.createElement('div'); d.className='mxc'+(i===MX.sel?' sel':''); d.dataset.i=i;
     d.innerHTML='<div class="t1"><b>'+mxHM(rt.start_time)+' → '+mxHM(rt.end_time)+'</b> · '+mxDur(rt.travel_time)+' · '+(rt.transfers||0)+' перес.'+(rt.total_price?' · NT$'+rt.total_price:'')+'</div><div class="t2">'+(rt.sections||[]).map(mxChip).join(' › ')+'</div>';
-    d.onclick=function(){ mxSelect(i); }; box.appendChild(d);
+    d.onclick=function(){ if(MX.sel===i){ $('mxSteps').hidden=!$('mxSteps').hidden; } else mxSelect(i); }; box.appendChild(d);
   });
 }
 function mxSelect(i){
@@ -3608,7 +3608,7 @@ function mxSelect(i){
     }
   });
   if(bounds&&bounds.isValid()) map.fitBounds(bounds,{paddingTopLeft:[40,100],paddingBottomRight:[40,Math.round(innerHeight*0.45)],maxZoom:17,animate:false});
-  const ul=$('mxSteps'); ul.innerHTML='';
+  const ul=$('mxSteps'); ul.innerHTML=''; ul.hidden=false;
   const selEl=document.querySelector('#mxList .mxc[data-i="'+i+'"]'); if(selEl) selEl.after(ul);   // кроки — одразу під обраним варіантом
   S.forEach(function(x,k){
     const d=(x.travelSummary&&x.travelSummary.duration)||0, t=x.transport||{}, dn=(x.departure.place&&x.departure.place.name)||'', an=(x.arrival.place&&x.arrival.place.name)||(k===S.length-1?'фініш':'');
