@@ -1306,7 +1306,7 @@ body.hide-cam-radar .cam-radar-badge{display:none !important;}
 
 <div class="mb" id="em">
   <div class="ms">
-    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 05.11.2026 22:27)</span></h3><button class="mc2" id="emc">✕</button></div>
+    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 19.11.2026 07:40)</span></h3><button class="mc2" id="emc">✕</button></div>
     <div class="tbar">
       <div class="tab a" id="t0" onclick="st(0)">ЕКРАН</div>
       <div class="tab" id="t1" onclick="st(1)">СИГНАЛИ</div>
@@ -4966,6 +4966,13 @@ function gpsOnReturn(){
   else if(Date.now()-_gpsLastFixTs>5000) restartGPS();
 }
 document.addEventListener('visibilitychange', gpsOnReturn);
+// 18.11.2026: повернення в застосунок — якщо вітер уже «прострочений» (таймер у фоні призупинявся), оновлюємо одразу
+document.addEventListener('visibilitychange', function(){
+  if(document.hidden || !MapCfg.windEnabled) return;
+  try{ if(!windDue()) return;
+    windLoad().then(function(ch){ if(!ch) return; Object.values(mapInstances).forEach(function(st){ if(st.windTimer){ try{ drawWindFrame(st); }catch(e){} const lb=st.navWindBtnEl&&st.navWindBtnEl.querySelector('.lb'); if(lb) lb.textContent=windTimeLabel()||'Вітер'; } }); try{ windWarnRoute(); }catch(e){} }).catch(function(){});
+  }catch(e){}
+});
 window.addEventListener('pageshow', gpsOnReturn);
 window.addEventListener('focus', gpsOnReturn);
 // Тригер 3: опитування кожні 5с, поки GPS НЕ запущено (дозвіл ще не дали / відмовили / watch впав).
@@ -16684,18 +16691,20 @@ function windMerge(){
   WIND.st=list; WIND.idx=idx;
 }
 // Завантаження: 10-хв набір щоразу, погодинний — не частіше за раз на ~25 хв. true — є нові дані.
+function windDue(){ return !WIND.fetchAt || Date.now()-WIND.fetchAt>=WIND_REFRESH_MS || (WIND.retryAt && Date.now()>=WIND.retryAt && Date.now()-WIND.fetchAt>=4*60*1000); }
 function windLoad(){
   if(WIND.loading) return WIND.loading;
   WIND.loading=(async function(){
     try{
       let changed=false;
       // 08.10.2026: дані свіжіші за 9 хв (напр. після вимк/увімк кнопки) — мережу не чіпаємо
-      if(WIND.s10 && WIND.st.length && WIND.fetchAt && Date.now()-WIND.fetchAt < 9*60*1000) return false;
+      if(WIND.s10 && WIND.st.length && WIND.fetchAt && Date.now()-WIND.fetchAt < 4*60*1000) return false;
       const d10=await windFetch(WIND_ID_10);
       WIND.fetchAt=Date.now();
       const p10=windParse(d10);
       let t10=''; p10.forEach(function(p){ if(p.obs>t10) t10=p.obs; });
-      if(!WIND.s10 || WIND.t10!==t10){ WIND.s10=p10; WIND.t10=t10; changed=true; }
+      if(!WIND.s10 || WIND.t10!==t10){ WIND.s10=p10; WIND.t10=t10; changed=true; WIND.retryAt=0; }
+      else WIND.retryAt=Date.now()+2*60*1000;   // 18.11.2026: нових спостережень ще нема (CWA публікує із запізненням) — повтор за 2 хв, а не за 10
       if(!WIND.sH || Date.now()-WIND.hAt>WIND_H_REFRESH_MS){
         try{ const dH=await windFetch(WIND_ID_H); WIND.sH=windParse(dH); WIND.hAt=Date.now(); changed=true; }
         catch(e){ console.warn('[wind] погодинні:', e); if(!WIND.sH) WIND.sH=[]; WIND.hAt=Date.now()-WIND_H_REFRESH_MS+5*60*1000; }
@@ -16834,11 +16843,12 @@ async function updateWindVisibility(st){
   st.windTimer=setInterval(async function(){
     if(mapInstances[st.tileId]!==st){ clearInterval(st.windTimer); st.windTimer=null; return; } // 02.11.2026
     if(!MapCfg.windEnabled){ removeWindLayer(st); return; }
+    if(!windDue()) return;   // 18.11.2026: тик щохвилини (iOS гальмує довгі інтервали у фоні) — вантажимо, коли настав час або треба повтор
     try{
       const changed=await windLoad();
       if(changed){ drawWindFrame(st); windWarnRoute(); const lb=st.navWindBtnEl && st.navWindBtnEl.querySelector('.lb'); if(lb) lb.textContent=windTimeLabel() || 'Вітер'; }
     }catch(e){ console.warn('[wind] оновлення:', e); }
-  }, WIND_REFRESH_MS);
+  }, 60*1000);
 }
 function toggleWindLayer(){
   MapCfg.windEnabled=!MapCfg.windEnabled;
@@ -18378,7 +18388,7 @@ async function wxBgStep(){
   }
   // ── вітер
   if(MapCfg.windEnabled && !WIND.loading && !WX_BG.windBusy && !wxMapAlive('windTimer')){
-    if(!WIND.st.length || Date.now()-WX_BG.windAt>WIND_REFRESH_MS){
+    if(!WIND.st.length || Date.now()-WX_BG.windAt>WIND_REFRESH_MS || windDue()){
       WX_BG.windBusy=true;
       try{
         await windLoad();

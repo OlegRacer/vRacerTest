@@ -139,6 +139,68 @@ input[type=text],input[type=password],select{flex:1;min-width:0;font:inherit;col
 .me svg{width:34px;height:34px;transition:transform .2s linear;filter:drop-shadow(0 1px 3px rgba(0,0,0,.5))}
 .leaflet-container{font:inherit}
 .leaflet-popup-content-wrapper{border-radius:12px}
+
+/* ═══ Стиль One UI (Samsung, версія 7/8): великі заокруглення, пігулкові кнопки, тональні заливки, м'які тіні. Вмикається body.oneui (Налаштування → Стиль) ═══ */
+body.oneui{
+  --bg:#f6f6f8; --fg:#0f0f10; --mut:#6c6c72; --card:rgba(255,255,255,.96); --line:rgba(0,0,0,.08); --fill:rgba(0,0,0,.055);
+  --acc:#3e91ff; --accfg:#fff; --tint:rgba(62,145,255,.14); --ok:#2fa866; --warn:#f08a24; --bad:#e5484d;
+  --sh:0 2px 14px rgba(0,0,0,.14); --r:28px; --r2:22px;
+  font-family:"Samsung One UI","SamsungOne",Roboto,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; letter-spacing:.005em;
+}
+body.oneui.night{ --bg:#0a0a0b; --fg:#f2f2f4; --mut:#9a9aa2; --card:rgba(32,32,35,.96); --line:rgba(255,255,255,.09); --fill:rgba(255,255,255,.09);
+  --acc:#5ba6ff; --accfg:#041428; --tint:rgba(91,166,255,.2); --sh:0 2px 16px rgba(0,0,0,.55); }
+/* плаваючі кнопки — кола з м'якою тінню; активна — тональна пігулка кольору акценту */
+body.oneui .fab{width:54px;height:54px;box-shadow:var(--sh);border:0}
+body.oneui .fab.sm{width:46px;height:46px}
+body.oneui .fab.on{background:var(--acc);color:var(--accfg)}
+body.oneui .fab small{font-size:10px;font-weight:500}
+body.oneui .chip{border-radius:var(--r2);padding:8px 14px;box-shadow:var(--sh)}
+body.oneui .chip b{font-weight:700}
+/* нижня панель — плаваюча «пігулка», активна вкладка — тональна пігулка */
+body.oneui #dock{left:12px;right:12px;border-radius:32px;padding:20px 8px 8px;box-shadow:0 4px 22px rgba(0,0,0,.2)}
+body.oneui #dockGrip{height:4px;width:36px;margin-left:-18px;opacity:.35}
+body.oneui #dock button{border-radius:24px;padding:7px 2px 6px;font-size:11px;font-weight:600}
+body.oneui #dock button.on{background:var(--tint);color:var(--acc)}
+/* банер повороту */
+body.oneui #turn{border-radius:var(--r);padding:12px 16px;box-shadow:0 4px 18px rgba(0,0,0,.28)}
+body.oneui #turn .off{background:rgba(255,255,255,.95);border-radius:999px;padding:9px 14px}
+/* шторки: верхні кути 32, широкий хват, великий заголовок */
+body.oneui .sheet{left:10px;right:10px;border-radius:32px;background:var(--bg);box-shadow:0 -2px 30px rgba(0,0,0,.28)}
+body.oneui .sheet header{padding:20px 20px 10px}
+body.oneui .sheet h2{font-size:24px;font-weight:700;letter-spacing:-.01em}
+body.oneui .sheet .x{width:38px;height:38px;background:var(--fill);font-size:15px}
+body.oneui .sheet .body{padding:4px 18px 22px}
+/* заголовки груп: «звичайний» регістр, колір акценту (як у налаштуваннях One UI) */
+body.oneui .sec{margin:20px 4px 8px;font-size:13.5px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--acc)}
+body.oneui .note{margin:6px 4px;font-size:13px}
+/* кнопки — пігулки: основна заливка, вторинна — тональна */
+body.oneui .btn{border-radius:999px;padding:12px 20px;min-height:44px;font-weight:600;box-shadow:none}
+body.oneui .btn.sec2{background:var(--tint);color:var(--acc)}
+body.oneui .btn.bad{background:var(--bad);color:#fff}
+body.oneui .btns{gap:10px;margin:10px 0}
+body.oneui .chipb{padding:8px 14px;border-radius:999px;background:var(--fill);font-size:14px}
+body.oneui .chipb.on{background:var(--acc);color:var(--accfg)}
+body.oneui .mxm{gap:10px}
+body.oneui .mxm button{padding:10px 15px;border-radius:999px;border:0;background:var(--fill);color:var(--fg);opacity:1;font-size:15px}
+body.oneui .mxm button.on{background:var(--tint);color:var(--acc);box-shadow:0 0 0 1.5px var(--acc) inset}
+/* поля введення — «заповнені», без рамки */
+body.oneui input[type=text],body.oneui input[type=password],body.oneui select{background:var(--fill);border:0;border-radius:16px;padding:12px 14px}
+body.oneui .row>label{flex:0 0 100px;font-size:13.5px}
+/* картки та списки — одна велика «острівна» картка */
+body.oneui .card,body.oneui .mxc{background:var(--card);border:0;border-radius:var(--r2);padding:14px 16px;margin:10px 0;box-shadow:0 1px 6px rgba(0,0,0,.06)}
+body.oneui .mxc.sel{box-shadow:0 0 0 2px var(--acc) inset;background:var(--card)}
+body.oneui .mxc .t1{font-size:16px}
+body.oneui .steps{background:var(--card);border-radius:var(--r2);padding:4px 16px;margin:10px 0}
+body.oneui .steps li{padding:11px 0}
+body.oneui .steps li:last-child{border-bottom:0}
+body.oneui #logbox{border:0;border-radius:var(--r2);background:var(--card)}
+/* меню довгого тапу, тости, панель прогнозу */
+body.oneui #ptmenu{border-radius:var(--r2);padding:8px;box-shadow:0 6px 28px rgba(0,0,0,.28)}
+body.oneui #ptmenu button{border-radius:16px;padding:12px 14px}
+body.oneui .toast{border-radius:999px;padding:10px 18px;background:rgba(30,30,34,.94)}
+body.oneui #fcbar{border-radius:var(--r2);padding:10px 16px}
+body.oneui #rtClear{border-radius:999px;background:var(--card);color:var(--acc);box-shadow:var(--sh)}
+body.oneui .leaflet-control-zoom,body.oneui .leaflet-bar{border:0;border-radius:18px;overflow:hidden;box-shadow:var(--sh)}
 </style>
 </head>
 <body class="night">
@@ -300,6 +362,7 @@ input[type=text],input[type=password],select{flex:1;min-width:0;font:inherit;col
     <div id="keys"></div>
 
     <div class="sec">Карта і кеш</div>
+    <div class="row"><label>Стиль</label><select id="sUi"><option value="1">One UI</option><option value="0">Класичний</option></select></div>
     <div class="row"><label>Тема</label>
       <select id="sDay">
         <option value="vracer">Як у VRacer</option>
@@ -337,7 +400,7 @@ input[type=text],input[type=password],select{flex:1;min-width:0;font:inherit;col
    • localStorage з префіксом 'ar_' (ключі API: cwaKey, tomtomKey, orsKey, cartoKey, googleApiKey; POI: poibrandsdb, poicustomcats)
    • IndexedDB 'vracer-map' v2: стор 'tiles' (ключ z_x_y), стор 'files' (mbtilesFile, routeFile, sqlWasmCache)
    Власні налаштування vTrip — ключі 'ar_vt_*' (щоб не псувати налаштування VRacer: 'ar_mapcfg' лише ЧИТАЄМО). */
-const BUILD='06.11.2026 21:32';
+const BUILD='19.11.2026 07:42';
 const $=id=>document.getElementById(id);
 function lg(k){try{const s=localStorage.getItem('ar_'+k);return s?JSON.parse(s):null;}catch(e){return null;}}
 function ls(k,v){try{localStorage.setItem('ar_'+k,JSON.stringify(v));}catch(e){}}
@@ -428,8 +491,9 @@ function isDay(){
   if(m==='auto'){ const h=new Date().getHours(); return h>=6 && h<18; }
   const s=SHARED(); return s.mapInverted!==false;          // VRacer: mapInverted===true → день
 }
+function applyUi(){ document.body.classList.toggle('oneui',CFG.oneui!==0); const m=document.querySelector('meta[name=theme-color]'); if(m) m.setAttribute('content',document.body.classList.contains('night')?'#0a0a0b':'#f6f6f8'); }
 function applyTheme(){
-  const d=isDay(); document.body.classList.toggle('day',d); document.body.classList.toggle('night',!d);
+  const d=isDay(); document.body.classList.toggle('day',d); document.body.classList.toggle('night',!d); applyUi();
   try{ document.querySelector('meta[name=theme-color]').content=d?'#f4f5f7':'#0f1216'; }catch(e){}
 }
 
@@ -3952,6 +4016,8 @@ grpOpen(null); grpSync();
 map.on('moveend zoomend',()=>{ if(!CFG.bus) return; busRender(); clearTimeout(BUS.deb); BUS.deb=setTimeout(busLoad,1200); });
 if(CFG.bus) setTimeout(()=>busSet(true),3000);
 
+
+(function(){ var u=document.getElementById('sUi'); if(!u) return; u.value=(CFG.oneui===0?'0':'1'); u.onchange=function(){ CFG.oneui=+u.value; saveCfg(); applyUi(); }; applyUi(); })();
 </script>
 </body>
 </html>
