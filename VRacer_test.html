@@ -1306,7 +1306,7 @@ body.hide-cam-radar .cam-radar-badge{display:none !important;}
 
 <div class="mb" id="em">
   <div class="ms">
-    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 19.11.2026 23:13)</span></h3><button class="mc2" id="emc">✕</button></div>
+    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 20.11.2026 17:20)</span></h3><button class="mc2" id="emc">✕</button></div>
     <div class="tbar">
       <div class="tab a" id="t0" onclick="st(0)">ЕКРАН</div>
       <div class="tab" id="t1" onclick="st(1)">СИГНАЛИ</div>
@@ -8567,7 +8567,7 @@ function pmonSnapshot(final){
   return line;
 }
 function pmonStart(){
-  if(PMON.on) return; PMON.on=true; PMON.since=performance.now(); PMON.last=0; PMON.fr=[]; PMON.w={};
+  if(PMON.on) return; PMON.on=true; try{ loadFrKick(); }catch(e){} PMON.since=performance.now(); PMON.last=0; PMON.fr=[]; PMON.w={};
   PMON.names.forEach(function(n){ pmonWrapFn(window,n,n); });
   try{ if(typeof L!=='undefined' && L.GridLayer){ pmonWrapFn(L.GridLayer.prototype,'_update','L._update'); pmonWrapFn(L.GridLayer.prototype,'_pruneTiles','L._pruneTiles'); pmonWrapFn(L.Map.prototype,'_resetView','L._resetView'); } if(typeof NlscLayer!=='undefined') pmonWrapFn(NlscLayer.prototype,'createTile','NLSC.createTile'); }catch(e){}
   try{ if(window.PerformanceObserver && PerformanceObserver.supportedEntryTypes && PerformanceObserver.supportedEntryTypes.indexOf('longtask')>=0){ PMON.po=new PerformanceObserver(function(list){ list.getEntries().forEach(function(e){ PMON.lt+=e.duration; PMON.ltN++; }); }); PMON.po.observe({entryTypes:['longtask']}); } }catch(e){}
@@ -8643,13 +8643,13 @@ function measFinish(abort){
   var fb=0; Object.keys(MEAS.hosts).forEach(function(h){ fb+=MEAS.hosts[h].b; });
   var bat=''; try{ if(R.bat0&&R.batObj){ var d=(R.bat0.l-R.batObj.level)*100; bat=(R.bat0.c||R.batObj.charging)?'заряджається — не показово':('заряд '+Math.round(R.bat0.l*100)+'% → '+Math.round(R.batObj.level*100)+'% ('+d.toFixed(1)+'% за '+Math.round(el)+' с'+(d>0?' ≈ '+(d*3600/el).toFixed(1)+'%/год':'')+')'); } else bat=(navigator.getBattery?'не вдалося прочитати':'недоступно у цьому браузері (iOS/WebKit)'); }catch(e){ bat='недоступно'; }
   // індекс навантаження 0–100 (евристика)
-  var idleFps=(moveFrac<0.25)?Math.min(20,fps*0.5):0, jankP=Math.min(20,jank/Math.max(1,n)*400);
+  var appRaf=MEAS.rafN/el, idleFps=(moveFrac<0.25)?Math.min(20,appRaf*0.5):0, jankP=Math.min(20,jank/Math.max(1,n)*400);
   var idx=Math.round(Math.min(40,busy*1.6)+Math.min(20,wake*0.5)+(idleFps||jankP)+Math.min(10,(MEAS.fetchN/el)*5)+Math.min(10,(st1.filt+st1.bf+st1.anim)*1.5));
   var verdict=idx<25?'низьке':(idx<50?'помірне':(idx<75?'високе':'дуже високе'));
   L2.push('🔋 ЗАМІР '+Math.round(el)+' с'+(abort?' (перервано)':'')+' · індекс навантаження '+idx+'/100 — '+verdict);
   L2.push('');
   L2.push('CPU: потік зайнятий ≈ '+busy.toFixed(1)+'% (таймери+кадри) · пробуджень/с (без кадрів) '+wake.toFixed(1)+' · живих інтервалів '+alive.length+' (з них ≤1 с: '+fast+')');
-  L2.push('Кадри: '+fps.toFixed(1)+' fps · p95 '+Math.round(p95)+' мс · макс '+Math.round(mx)+' мс · >50 мс ×'+jank+' · карта рухалась '+Math.round(moveFrac*100)+'% часу');
+  L2.push('Кадри: екран '+fps.toFixed(1)+' fps (його задає сам замір) · rAF-викликів ЗАСТОСУНКУ '+appRaf.toFixed(1)+'/с · p95 '+Math.round(p95)+' мс · макс '+Math.round(mx)+' мс · >50 мс ×'+jank+' · карта рухалась '+Math.round(moveFrac*100)+'% часу');
   L2.push('Мережа: fetch '+MEAS.fetchN+' ('+(MEAS.fetchN/el*60).toFixed(1)+'/хв, ≈'+Math.round(fb/1024)+' КБ відомо) · усього ресурсів '+nres+' (тайлів/картинок ≈'+tileN+') · '+Object.keys(byType).map(function(k){return k+' '+byType[k];}).join(', '));
   L2.push('GPS: '+MEAS.geoN+' оновлень ('+(MEAS.geoN/el).toFixed(2)+'/с)'+(MEAS.geoHi?' · висока точність (GPS-чип постійно ввімкнений)':'')+' · WakeLock: '+(_wakeLock!==null?'тримається (екран не гасне)':'ні'));
   L2.push('Малювання: DOM '+st1.dom+' · canvas '+st1.canv+' (≈'+st1.mp.toFixed(1)+' Мпікс) · CSS-анімацій біжить '+st1.anim+' · елементів з filter '+st1.filt+' / backdrop-filter '+st1.bf);
@@ -8663,7 +8663,7 @@ function measFinish(abort){
   var an=Object.keys(st1.animNames); if(an.length){ L2.push(''); L2.push('Біжать CSS-анімації: '+an.slice(0,6).map(function(k){return k+'×'+st1.animNames[k];}).join(', ')); }
   // висновки
   var tips=[];
-  if(moveFrac<0.25 && fps>15) tips.push('Карта майже не рухалась, а кадрів '+fps.toFixed(0)+'/с — щось постійно перемальовує екран (анімація, rAF-цикл). Це головне джерело зайвого розряду.');
+  if(moveFrac<0.25 && appRaf>15) tips.push('Карта майже не рухалась, а rAF-викликів застосунку '+appRaf.toFixed(0)+'/с — щось постійно перемальовує екран (анімація, rAF-цикл). Це головне джерело зайвого розряду.');
   if(busy>8) tips.push('Потік зайнятий '+busy.toFixed(0)+'% — перегляньте ТОП-10: найвищі позиції варто оптимізувати/рідше викликати.');
   if(wake>25) tips.push('Дуже багато пробуджень ('+wake.toFixed(0)+'/с) — CPU не встигає «засинати»; об\'єднайте таймери або збільшіть інтервали.');
   if(st1.filt>0) tips.push('CSS filter на '+st1.filt+' елементах (напр. інверсія тайлів) — рахується на GPU щокадру при русі карти.');
@@ -8679,6 +8679,8 @@ function measFinish(abort){
   var o=document.getElementById('measOut'); if(o){ o.style.display='block'; o.textContent=txt+'\n\nІСТОРІЯ ЗАМІРІВ:\n'+MEAS.hist.join('\n'); }
   try{ txt.split('\n').forEach(function(l){ if(l) dbgEv('[замір] '+l); }); }catch(e){}
 }
+function measLoadMonLabel(){ return '🛡 Постійний сторож навантаження (⚠ у Журналі): '+(LOAD.frOn?'УВІМК (їсть енергію)':'вимк (економія)'); }
+function measLoadMonToggle(){ loadFrSet(!LOAD.frOn); var b=document.getElementById('loadMonBtn'); if(b) b.textContent=measLoadMonLabel(); }
 function measCopy(){
   var t=MEAS.last||'Замір ще не проводився';
   try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(function(){ sht('Скопійовано'); }); return; } }catch(e){}
@@ -8690,6 +8692,7 @@ function measHtml(){
     +'<div style="font-size:12px;color:var(--muted);padding:2px 5px 8px;line-height:1.5;">Міряє, скільки додаток вантажить процесор і будить телефон: таймери, кадри, мережа, GPS, анімації, шари карти. Видає індекс 0–100 і список «жерунів». Запустіть, коли їдете з потрібними шарами; потім вимкніть шар і повторіть — порівняйте індекси.</div>'
     +'<div style="display:flex;gap:6px;padding:0 0 6px;"><button type="button" class="ab" style="'+bs+'" onclick="measStart(30)">▶ 30 с</button><button type="button" class="ab" style="'+bs+'" onclick="measStart(60)">▶ 60 с</button><button type="button" class="ab" style="'+bs+'" onclick="measStart(120)">▶ 120 с</button></div>'
     +'<div style="display:flex;gap:6px;padding:0 0 6px;"><button type="button" class="ab" style="'+bs+'" onclick="measStop()">⏹ Стоп</button><button type="button" class="ab" style="'+bs+'" onclick="measCopy()">📋 Копіювати</button></div>'
+    +'<button type="button" class="ab" id="loadMonBtn" style="margin:0 0 6px;background:#222;color:#fff;text-align:left;" onclick="measLoadMonToggle()">'+measLoadMonLabel()+'</button>'
     +'<pre id="measOut" style="display:'+(MEAS.last?'block':'none')+';white-space:pre-wrap;word-break:break-word;font-size:10.5px;line-height:1.4;margin:4px 0 0;padding:8px;background:#111;border-radius:8px;color:#ddd;">'+(MEAS.last?MEAS.last.replace(/&/g,'&amp;').replace(/</g,'&lt;'):'')+'</pre>';
 }
 
@@ -11219,9 +11222,14 @@ const LOAD={ticks:0, lagSum:0, lagMax:0, stall:0, frN:0, frSum:0, frMax:0, slow:
       LOAD.frN++; LOAD.frSum+=d; if(d>LOAD.frMax) LOAD.frMax=d; if(d>50) LOAD.slow++; if(d>100) LOAD.jank++;
       if(d>=250) loadSpike('кадр тривав '+Math.round(d)+' мс');
     }
-    requestAnimationFrame(frame);
+    // 20.11.2026: постійний rAF-цикл будив сторінку 60×/с навіть у спокої (замір енергії). Тепер працює лише коли потрібен: монітор/замір/«сторож» увімкнені
+    if(LOAD.frOn || PMON.on) requestAnimationFrame(frame); else LOAD.frRun=false;
   }
-  requestAnimationFrame(frame);
+  LOAD.frOn=false; LOAD.frRun=false;
+  try{ LOAD.frOn=(lg('load_mon')===true); }catch(e){}
+  window.loadFrKick=function(){ if(LOAD.frRun) return; LOAD.frRun=true; LOAD.lastFr=0; requestAnimationFrame(frame); };
+  window.loadFrSet=function(on){ LOAD.frOn=!!on; try{ ls('load_mon',!!on); }catch(e){} if(on) window.loadFrKick(); };
+  if(LOAD.frOn) window.loadFrKick();
   try{
     if(window.PerformanceObserver && PerformanceObserver.supportedEntryTypes && PerformanceObserver.supportedEntryTypes.indexOf('longtask')>=0){
       new PerformanceObserver(function(list){ list.getEntries().forEach(function(e){ LOAD.ltSum+=e.duration; LOAD.ltN++; }); }).observe({entryTypes:['longtask']});
@@ -11249,6 +11257,11 @@ function startNavAnim(targetLat, targetLon, targetHeading){
   const fromLat=navAnimPos ? navAnimPos.lat : targetLat;
   const fromLon=navAnimPos ? navAnimPos.lon : targetLon;
   const fromHeading=navAnimHeading;
+  // 20.11.2026: стоїмо на місці (зсув <1 м, курс <2°) і цикл анімації не біжить — не запускаємо rAF 55 кадрів/с даремно
+  if(navAnimPos && navAnimRafId==null && Math.abs(targetLat-fromLat)*111000<1 && Math.abs(targetLon-fromLon)*101000<1){
+    const hd=(targetHeading!=null && fromHeading!=null)?Math.abs(shortestAngleDeltaDeg(fromHeading,targetHeading)):((targetHeading==null && fromHeading==null)?0:99);
+    if(hd<2) return;
+  }
   navAnimTarget={lat:targetLat, lon:targetLon, heading:targetHeading, fromLat, fromLon, fromHeading, t0:performance.now()};
   if(navAnimRafId==null) navAnimRafId=requestAnimationFrame(navAnimStep);
 }
