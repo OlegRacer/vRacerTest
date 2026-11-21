@@ -1229,7 +1229,7 @@ body.hide-cam-radar .cam-radar-badge{display:none !important;}
 
 <div class="mb" id="em">
   <div class="ms">
-    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 21.11.2026 19:40)</span></h3><button class="mc2" id="emc">✕</button></div>
+    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 21.11.2026 22:50)</span></h3><button class="mc2" id="emc">✕</button></div>
     <div class="tbar">
       <div class="tab a" id="t0" onclick="st(0)">ЕКРАН</div>
       <div class="tab" id="t1" onclick="st(1)">СИГНАЛИ</div>
@@ -4784,7 +4784,7 @@ function gpsOnPos(pos){
   _gpsLastFixTs=Date.now(); _gpsDeniedToast=false;
   const _gk=pos.coords.speed!=null?Math.round(pos.coords.speed*3.6):0;
   V.GPS=_gk;
-  try{ spdFromGps(pos.coords.speed!=null?pos.coords.speed*3.6:null, pos.coords.accuracy); spdApply(true,_gk); }catch(e){}   // 21.11.2026: корекція/вибір джерела швидкості
+  if(!pos._dr){ try{ drOnFix(pos); }catch(e){} try{ spdFromGps(pos.coords.speed!=null?pos.coords.speed*3.6:null, pos.coords.accuracy); spdApply(true,_gk); }catch(e){} }   // _dr = розрахункова позиція: не калібруємо k по ній   // 21.11.2026: корекція/вибір джерела швидкості
   V.Alt=pos.coords.altitude!=null?Math.round(pos.coords.altitude):'--';
   _lastLat=pos.coords.latitude; _lastLon=pos.coords.longitude;
   _lastAlt=pos.coords.altitude; _lastSpeedMps=pos.coords.speed; _lastHeading=pos.coords.heading;
@@ -4810,6 +4810,7 @@ function gpsOnErr(err){
 }
 function startGPS(){
   if(!navigator.geolocation||gpsId!=null) return;
+  if(typeof DR!=="undefined" && DR && DR.on){ drStart(); return; } // 21.11.2026: інерціальний режим — замість watchPosition рідке опитування
   try{
     gpsId=navigator.geolocation.watchPosition(gpsOnPos, gpsOnErr, {enableHighAccuracy:true, maximumAge:1000, timeout:15000});
   }catch(e){ gpsId=null; console.error('startGPS:',e); }
@@ -4930,6 +4931,7 @@ function tripPushPoint(){
   tripLog.push({
     t: Date.now(),
     lat: _lastLat, lon: _lastLon, alt: _lastAlt, spd: _lastSpeedMps,
+    ecuRaw: (typeof SPD!=='undefined'?SPD.raw:null), spdK: (typeof SPD!=='undefined'?SPD.k:null), spdShown: V.GPS, spdSrc: (typeof SPD!=='undefined'?SPD.src:''), // 21.11.2026: для аналізу коефіцієнта k
     // V.Volt, V.Gforce і V.Inj_Rate на живому дашборді — РЯДКИ (formatted через
     // .toFixed() для гарного відображення на тайлі), а не числа, як решта полів.
     // tripNumOrEmpty() очікує typeof==='number', тож ці поля мовчки писались
@@ -4989,7 +4991,7 @@ async function tripExportGPX(log){
       `rpm="${tripNumOrEmpty(p.rpm)}" tps="${tripNumOrEmpty(p.tps)}" volt="${tripNumOrEmpty(p.volt)}" `+
       `tEng="${tripNumOrEmpty(p.tEng)}" tAir="${tripNumOrEmpty(p.tAir)}" map="${tripNumOrEmpty(p.map)}" `+
       `inj="${tripNumOrEmpty(p.inj)}" lean="${tripNumOrEmpty(p.lean)}" g="${tripNumOrEmpty(p.g)}" `+
-      `fall="${p.fall||''}" spdMps="${spdAttr}"/></extensions></trkpt>`;
+      `fall="${p.fall||''}" spdMps="${spdAttr}" ecuRaw="${tripNumOrEmpty(p.ecuRaw)}" spdK="${p.spdK!=null?(+p.spdK).toFixed(4):''}" spdShown="${tripNumOrEmpty(+p.spdShown)}" spdSrc="${p.spdSrc||''}"/></extensions></trkpt>`;
   }).filter(Boolean).join('\n');
 
   const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n`+
@@ -5710,6 +5712,7 @@ function startMotionSensors(){
 
 let _gforceRaw = 1; // сира магнітуда (≈1 у стані спокою через гравітацію) — саме її використовує детекція падіння (пороги нижче каліброві на ЦЕ число, не міняти)
 function onMotion(e){
+  if(typeof DR!=="undefined" && DR && DR.on){ try{ drMotion(e); }catch(x){} } // 21.11.2026: інерціальний режим
   const g=e.accelerationIncludingGravity;
   if(!g || g.x===null || g.x===undefined) return;
   const now=Date.now();
@@ -6237,6 +6240,9 @@ function spdCalib(){
   if(SPD.raw==null || SPD.gpsKmh==null || now-SPD.rawTs>500 || now-SPD.gpsTs>500) return;
   let lo=255,hi=0; SPD.win.forEach(function(x){ if(x[1]<lo) lo=x[1]; if(x[1]>hi) hi=x[1]; }); if(hi-lo>2) return;   // калібруємо лише на рівній швидкості (GPS і ECU не синхронні)
   if(!(SPD.gpsAcc<=20) || SPD.gpsKmh<8 || SPD.raw<3) return;
+  // 21.11.2026: економія CPU/тепла — після калібрування беремо одну пару ECU/GPS не частіше ніж раз на 60 с (до калібрування — раз на 2 с)
+  if(now-(SPD.lastSample||0)<(spdCalibrated()?60000:2000)) return;
+  SPD.lastSample=now;
   const ratio=SPD.gpsKmh/SPD.raw;
   if(spdCalibrated() && (ratio<SPD.k*0.6 || ratio>SPD.k*1.6)) return;   // викид (GPS-стрибок)
   SPD.buf.push([SPD.gpsKmh,SPD.raw]);
@@ -6285,6 +6291,81 @@ function spdHtml(){
    +'<div style="display:flex;gap:6px;padding:0 0 6px;"><button type="button" class="ab" style="'+bs+'" onclick="spdSetMode(\'auto\')">Авто</button><button type="button" class="ab" style="'+bs+'" onclick="spdSetMode(\'ecu\')">ECU</button><button type="button" class="ab" style="'+bs+'" onclick="spdReset()">Скинути k</button></div>'
    +'<div style="display:flex;gap:6px;padding:0 0 6px;"><button type="button" class="ab" style="'+bs+'" onclick="spdSetLen(20)">Пакет 20 Б</button><button type="button" class="ab" style="'+bs+'" onclick="spdSetLen(19)">Пакет 19 Б</button></div>'
    +'<pre id="spdOut" style="white-space:pre-wrap;font-size:11px;line-height:1.45;margin:4px 0 0;padding:8px;background:#111;border-radius:8px;color:#ddd;"></pre>';
+}
+// ===== 21.11.2026: ІНЕРЦІАЛЬНИЙ РЕЖИМ (DR) — позиція між рідкими GPS-фіксами =====
+// Курс = інтеграція кутової швидкості ВЗДОВЖ ВЕРТИКАЛІ (rotationRate · напрям гравітації) — не залежить від кріплення телефона (горизонтально/вертикально) і не «застрягає на 90°», бо Ейлерові кути не використовуються.
+// Зсув гіроскопа (bias) вимірюється, поки стоїмо; знак осі вчиться сам за поворотами GPS. Швидкість — з ECU (k), позиція = останній фікс + v·dt вздовж курсу.
+var DR={on:(lg('dr_on')===true),gap:+lg('dr_gap')||10,sgn:+lg('dr_sgn')||0,sgnAcc:+lg('dr_sgnacc')||0,bias:+lg('dr_bias')||0,g:null,yaw:0,lastT:0,hdg:null,gyroAcc:0,
+  lat:null,lon:null,fixTs:0,fixKmh:0,courseLast:null,gyroSince:0,errN:0,errSum:0,errMax:0,errLast:null,polls:0,pollIv:null,stepIv:null,stepTs:0,zero:null,fixes:0,alt:null};
+function drWrap(a){ a%=360; if(a<0) a+=360; return a; }
+function drDiff(a,b){ let d=(a-b)%360; if(d>180) d-=360; if(d<-180) d+=360; return d; }
+function drMotion(e){
+  const rr=e.rotationRate, a=e.accelerationIncludingGravity; if(!rr||!a||a.x==null||rr.alpha==null) return;
+  const t=performance.now(); const dt=DR.lastT?Math.min(0.2,(t-DR.lastT)/1000):0; DR.lastT=t;
+  if(!DR.g) DR.g=[a.x,a.y,a.z]; else { DR.g[0]+=0.02*(a.x-DR.g[0]); DR.g[1]+=0.02*(a.y-DR.g[1]); DR.g[2]+=0.02*(a.z-DR.g[2]); }
+  const gm=Math.sqrt(DR.g[0]*DR.g[0]+DR.g[1]*DR.g[1]+DR.g[2]*DR.g[2])||1;
+  DR.yaw=(rr.beta*DR.g[0]+rr.gamma*DR.g[1]+rr.alpha*DR.g[2])/gm; // °/с навколо вертикалі (знак — невідомий, вчимо)
+  const still=!(+V.GPS>=1);
+  if(DR.zero){ DR.zero.s+=DR.yaw; DR.zero.n++; if(t>DR.zero.until){ if(DR.zero.n>10) DR.bias=DR.zero.s/DR.zero.n; DR.zero=null; try{ ls('dr_bias',DR.bias); }catch(x){} } }
+  else if(still) DR.bias+=0.01*(DR.yaw-DR.bias);
+  if(!still && dt>0){ const w=(DR.yaw-DR.bias)*dt; DR.gyroAcc+=w; DR.gyroSince+=w; if(DR.hdg!=null) DR.hdg=drWrap(DR.hdg+(DR.sgn||-1)*w); }
+}
+function drZero(){ DR.zero={s:0,n:0,until:performance.now()+2000}; DR.g=null; DR.gyroAcc=0; DR.gyroSince=0; try{ sht('Гіроскоп: тримайте нерухомо 2 с'); }catch(e){} }
+function drDist(a,b,c,d){ const R=6371000,x=(d-b)*Math.PI/180*Math.cos((a+c)/2*Math.PI/180),y=(c-a)*Math.PI/180; return R*Math.sqrt(x*x+y*y); }
+function drOnFix(pos){ // реальний GPS-фікс
+  const c=pos.coords, now=Date.now(); DR.fixes++;
+  if(c.accuracy!=null && c.accuracy>30) return;
+  if(DR.lat!=null && DR.on){ const er=drDist(DR.lat,DR.lon,c.latitude,c.longitude); if(er<2000){ DR.errLast=er; DR.errN++; DR.errSum+=er; if(er>DR.errMax) DR.errMax=er; } }
+  const kmh=c.speed!=null?c.speed*3.6:0;
+  if(c.heading!=null && !isNaN(c.heading) && kmh>=8){
+    if(DR.courseLast!=null){ const dc=drDiff(c.heading,DR.courseLast); if(Math.abs(dc)>3 && Math.abs(DR.gyroSince)>2){ DR.sgnAcc+=dc*DR.gyroSince; DR.sgn=DR.sgnAcc>=0?1:-1; try{ ls('dr_sgn',DR.sgn); ls('dr_sgnacc',DR.sgnAcc); }catch(e){} } }
+    DR.courseLast=c.heading; DR.hdg=c.heading;
+  } else if(kmh<8) DR.courseLast=null;
+  DR.gyroSince=0; DR.lat=c.latitude; DR.lon=c.longitude; DR.fixTs=now; DR.fixKmh=kmh; DR.alt=c.altitude; DR.stepTs=now;
+}
+function drSpeedKmh(){ // швидкість для екстраполяції: ECU (після калібрування), інакше остання GPS
+  const now=Date.now();
+  if(SPD.raw!=null && now-SPD.rawTs<2000 && spdCalibrated()) return spdEcuKmh();
+  return (now-DR.fixTs<15000)?DR.fixKmh:0;
+}
+function drStep(){
+  if(!DR.on || DR.lat==null) return;
+  const now=Date.now(), dt=Math.min(3,(now-(DR.stepTs||now))/1000); DR.stepTs=now;
+  const v=drSpeedKmh()/3.6; if(!(v>0.3) || DR.hdg==null){ return; }
+  const h=DR.hdg*Math.PI/180, d=v*dt;
+  DR.lat+=d*Math.cos(h)/111320; DR.lon+=d*Math.sin(h)/(111320*Math.cos(DR.lat*Math.PI/180));
+  gpsOnPos({coords:{latitude:DR.lat,longitude:DR.lon,heading:DR.hdg,speed:v,accuracy:25,altitude:DR.alt},timestamp:now,_dr:true});
+}
+function drPoll(){
+  if(!DR.on||document.hidden&&false) return; DR.polls++;
+  try{ navigator.geolocation.getCurrentPosition(gpsOnPos,gpsOnErr,{enableHighAccuracy:true,maximumAge:0,timeout:12000}); }catch(e){}
+}
+function drStart(){
+  if(DR.pollIv) return;
+  if(gpsId!=null){ try{ navigator.geolocation.clearWatch(gpsId); }catch(e){} gpsId=null; }
+  DR.pollIv=setInterval(drPoll,DR.gap*1000); DR.stepIv=setInterval(drStep,1000); drPoll();
+}
+function drStop(){ if(DR.pollIv){ clearInterval(DR.pollIv); DR.pollIv=null; } if(DR.stepIv){ clearInterval(DR.stepIv); DR.stepIv=null; } }
+function drSetOn(on){ DR.on=!!on; try{ ls('dr_on',DR.on); }catch(e){} drStop(); if(DR.on){ try{ startMotionSensors(); }catch(e){} drStart(); } else { DR.lat=null; startGPS(); } drRefresh(); }
+function drSetGap(s){ DR.gap=s; try{ ls('dr_gap',s); }catch(e){} if(DR.on){ drStop(); drStart(); } drRefresh(); }
+function drResetStats(){ DR.errN=0; DR.errSum=0; DR.errMax=0; DR.errLast=null; DR.fixes=0; DR.polls=0; DR.sgn=0; DR.sgnAcc=0; try{ ls('dr_sgn',0); ls('dr_sgnacc',0); }catch(e){} drRefresh(); }
+function drRefresh(){
+  const o=document.getElementById('drOut'); if(!o){ if(DR.iv){ clearInterval(DR.iv); DR.iv=null; } return; }
+  o.textContent='Режим: '+(DR.on?('ІНЕРЦІАЛЬНИЙ, GPS раз на '+DR.gap+' с'):'вимкнено (звичайний GPS ~1/с)')
+   +'\nКурс: '+(DR.hdg==null?'—':Math.round(DR.hdg)+'°')+' · зсув гіроскопа: '+DR.bias.toFixed(3)+'°/с · кутова швидкість: '+DR.yaw.toFixed(1)+'°/с'
+   +'\nЗнак осі: '+(DR.sgn?(DR.sgn>0?'+':'−')+' (вивчено)':'ще не вивчено (повороти >8 км/год)')
+   +'\nGPS-фіксів: '+DR.fixes+' · похибка передбачення: '+(DR.errN?('сер. '+(DR.errSum/DR.errN).toFixed(1)+' м, макс '+DR.errMax.toFixed(0)+' м, ост. '+DR.errLast.toFixed(1)+' м ('+DR.errN+')'):'—')
+   +'\nШвидкість для DR: '+Math.round(drSpeedKmh()||0)+' км/год ('+((SPD.raw!=null&&spdCalibrated())?'ECU':'GPS')+')';
+}
+function drHtml(){
+  const bs='flex:1;margin:0;background:#222;color:#fff;';
+  if(!DR.iv) DR.iv=setInterval(drRefresh,1000);
+  setTimeout(drRefresh,50);
+  return '<div style="font-size:12px;font-weight:700;color:#ffb300;padding-top:16px;">🧭 ІНЕРЦІАЛЬНИЙ РЕЖИМ (ЕКОНОМІЯ GPS)</div>'
+   +'<div style="font-size:12px;color:var(--muted);padding:2px 5px 8px;line-height:1.5;">GPS опитується рідко, між фіксами позиція рахується за швидкістю ECU і гіроскопом. Перед їздою натисніть «Обнулити гіроскоп» (телефон нерухомо 2 с). Похибка передбачення нижче показує, наскільки це точно.</div>'
+   +'<div style="display:flex;gap:6px;padding:0 0 6px;"><button type="button" class="ab" style="'+bs+'" onclick="drSetOn(true)">Увімк.</button><button type="button" class="ab" style="'+bs+'" onclick="drSetOn(false)">Вимк.</button><button type="button" class="ab" style="'+bs+'" onclick="drZero()">Обнулити гіроскоп</button></div>'
+   +'<div style="display:flex;gap:6px;padding:0 0 6px;"><button type="button" class="ab" style="'+bs+'" onclick="drSetGap(5)">5 с</button><button type="button" class="ab" style="'+bs+'" onclick="drSetGap(10)">10 с</button><button type="button" class="ab" style="'+bs+'" onclick="drSetGap(20)">20 с</button><button type="button" class="ab" style="'+bs+'" onclick="drSetGap(30)">30 с</button><button type="button" class="ab" style="'+bs+'" onclick="drResetStats()">Скинути</button></div>'
+   +'<pre id="drOut" style="white-space:pre-wrap;font-size:11px;line-height:1.45;margin:4px 0 0;padding:8px;background:#111;border-radius:8px;color:#ddd;"></pre>';
 }
 function parse20Byte(pkt){
   if(pkt.length !== 20) return false;
@@ -20421,6 +20502,7 @@ function renderTestSettingsTab(body){
     +'<div style="padding:0 0 6px;"><button type="button" class="ab" id="trfCalBtn" style="margin:0;background:#222;color:#fff;" onclick="trafficCalib()">🎯 Калібрування рівнів: рівні, швидкості й ділянки біля мене</button></div>'
     +'<pre id="trfOut" style="display:'+(_trfTxt?'block':'none')+';white-space:pre-wrap;word-break:break-all;font-size:10px;line-height:1.35;margin:4px 0 0;padding:8px;background:#111;border-radius:8px;color:#cde;">'+String(_trfTxt||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</pre>'
     +spdHtml()
+    +drHtml()
     +measHtml()
     +pmonHtml()
     +'<div style="font-size:12px;font-weight:700;color:#ffb300;padding-top:16px;">🔬 ШАРИ КАРТИ — вимикай по одному, щоб знайти винуватця (після перезавантаження все знову увімкнено)</div>'
