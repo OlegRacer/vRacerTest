@@ -325,7 +325,6 @@ html.ar-landscape .tile-stack{
 }
 html.ar-landscape .tile-stack>.tile{grid-column:unset;grid-row:unset;width:100%;flex-shrink:0;}
 html.ar-landscape .tile-stack>.tile.audio-tile,
-html.ar-landscape .tile-stack>.tile.stopwatch-tile{flex:0 0 123px;}
 html.ar-landscape .tile-stack>.tile.map-tile{flex:0 0 212px;min-height:0;}
 
 /* ВІДЕО-ПЛИТКА: нормальний вигляд за замовчуванням в обох орієнтаціях.
@@ -483,8 +482,8 @@ html body .map-tile-viewport.map-inverted .leaflet-container{background:#ddd;}
 #videoCover .vc-lbl{position:absolute;left:0;right:0;top:25%;transform:translateY(-50%);text-align:center;font:700 11px 'Rajdhani','Segoe UI',sans-serif;font-size:max(9px,7.5cqh);letter-spacing:2px;line-height:1;color:var(--c);}
 #videoCover .vc-ln{position:absolute;top:35%;left:41%;right:41%;height:1px;background:var(--c);opacity:.45;}
 #videoCover .vc-val{position:absolute;left:0;right:0;top:63%;transform:translateY(-50%);text-align:center;font-family:'JetBrains Mono','Courier New',monospace;font-weight:700;font-size:32px;font-size:32cqh;line-height:1;color:#fff;}
-html.boot-mask .at-times span,html.boot-mask .sw-time{color:transparent!important;position:relative;}
-html.boot-mask .at-times span::after,html.boot-mask .sw-time::after{content:'--:--';position:absolute;left:0;right:0;text-align:center;color:#8a8a90;}
+html.boot-mask .at-times span{color:transparent!important;position:relative;}
+html.boot-mask .at-times span::after{content:'--:--';position:absolute;left:0;right:0;text-align:center;color:#8a8a90;}
 html.boot-reveal .tv{animation:bootReveal .3s ease-out;}
 @keyframes bootReveal{from{opacity:0}to{opacity:1}}
 @media (prefers-reduced-motion:reduce){html.boot-reveal .tv{animation:none;}}
@@ -1081,20 +1080,6 @@ html.ar-landscape .tile.s21 .at-btn.at-play{font-size:1rem;}
 html.ar-landscape .tile.s21 .at-progress{height:10px;margin-top:20px;}
 html.ar-landscape .tile.s21 .at-times{font-size:8px;margin-top:-2px;}
 
-/* ПЛИТКА "СЕКУНДОМІР" (17.08.2026) — простіша за музику: тільки цифри +
-   дві кнопки (⏹ скидання, ▶/⏸ старт-пауза). Кнопки навмисно перевикористовують
-   класи .at-btn/.at-play (стилі музичної плитки) — той самий "скляний
-   квадрат" вигляд, без дублювання CSS. */
-.sw-tile-inner{width:100%;height:100%;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;padding:6px 10px;gap:10px;}
-.sw-time{font-weight:700;font-family:'JetBrains Mono','Courier New',monospace;
-  font-size:clamp(20px,7vw,34px);color:#fff;line-height:1;letter-spacing:0.02em;
-  text-align:center;flex-shrink:0;}
-.sw-controls{display:flex;align-items:center;justify-content:center;gap:18px;flex-shrink:0;}
-/* Той самий запобіжник, що й у музичної плитки: в editMode (розкладка
-   плиток) кнопки не повинні перехоплювати тап — інакше замість вибору/
-   переміщення плитки випадково стартував би/скидався секундомір. */
-.tile.ed .sw-tile-inner{pointer-events:none;}
 
 /* 27.10.2026: ОБКЛАДИНКА ТРЕКУ як фон плитки «Музика» (за кнопками). Береться з тегів файлу (ID3 APIC / MP4 covr); вимикач — Налаштування → Музика. */
 .audio-tile-inner>*{z-index:1}
@@ -1306,7 +1291,7 @@ body.hide-cam-radar .cam-radar-badge{display:none !important;}
 
 <div class="mb" id="em">
   <div class="ms">
-    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 20.11.2026 17:20)</span></h3><button class="mc2" id="emc">✕</button></div>
+    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 21.11.2026 11:23)</span></h3><button class="mc2" id="emc">✕</button></div>
     <div class="tbar">
       <div class="tab a" id="t0" onclick="st(0)">ЕКРАН</div>
       <div class="tab" id="t1" onclick="st(1)">СИГНАЛИ</div>
@@ -2169,10 +2154,6 @@ const P={
   // "Музика" з'явилась у списку "Додати нову плитку" (mkTile/cpk
   // дивляться в P). Рендер — окремо, у mkAudioTile().
   AudioTile:{n:'Музика',    o:-1,s:0,sc:1,    b:0,  u:'',     mn:0, mx:0,   c:'#37e0e6',src:'local'},
-  // Так само як MapTile/AudioTile — не телеметричний параметр, лише щоб
-  // плитка "Секундомір" з'явилась у списку "Додати нову плитку". Рендер —
-  // окремо, у mkStopwatchTile() (17.08.2026).
-  StopwatchTile:{n:'Секундомір', o:-1,s:0,sc:1, b:0,  u:'',     mn:0, mx:0,   c:'#ffd23f',src:'local'},
   // 02.11.2026: плитка «Погода» 1×1 — 4 кнопки (Дощ, Вітер, Темпер., Повітря) як на великій карті. Рендер — mkWeatherTile().
   // 03.11.2026: плитка «4 поля» 1×1 — чотири довільні параметри (вибираються в «Налаштувати плитку»). Рендер — mkQuadTile().
   QuadTile:   {n:'4 поля',    o:-1,s:0,sc:1,    b:0,  u:'',     mn:0, mx:0,   c:'#a29bfe',src:'local'},
@@ -2706,104 +2687,6 @@ function updateTrackListHighlightOnly(){
     if(nameEl) nameEl.textContent=(isPlaying?'▶ ':'')+t.title;
   });
 }
-// ── Плитка "Секундомір" (17.08.2026) ──────────────────────────────────
-// Стан навмисно живе ОКРЕМО від DOM (об'єкт swState, ключ — tile.id), бо
-// render() повністю перебудовує innerHTML сітки плиток при БУДЬ-ЯКІЙ зміні
-// розкладу (додавання/видалення іншої плитки, зміна розміру тощо) — якби
-// час рахувався виходячи з якогось DOM-вузла чи локальної змінної
-// всередині mkStopwatchTile(), кожен такий re-render скидав би його.
-// Тикер (swTickInterval) — ОДИН спільний на всі екземпляри секундоміра
-// (якщо їх кілька), і оновлює DOM через getElementById('swtime-'+id) —
-// це навмисно (не через збережене посилання на елемент), бо посилання,
-// збережене в момент mkStopwatchTile(), стає "мертвим" одразу після
-// наступного render() (вузол замінюється новим). Тикер живе, лише поки
-// хоч один секундомір активний — вимикається сам, коли останній стає на
-// паузу/скидається (щоб не гріти CPU/батарею фоновим інтервалом даремно).
-const swState={}; // {id:{running:bool, elapsedMs:number, startEpoch:number|null}}
-let swTickInterval=null;
-function swGetState(id){
-  if(!swState[id]) swState[id]={running:false, elapsedMs:0, startEpoch:null};
-  return swState[id];
-}
-function swElapsedMs(id){
-  const s=swGetState(id);
-  return s.elapsedMs + ((s.running && s.startEpoch) ? (Date.now()-s.startEpoch) : 0);
-}
-function swFormat(ms){
-  const totalCs=Math.floor(ms/10); // сотні секунди
-  const cs=totalCs%100;
-  const totalSec=Math.floor(totalCs/100);
-  const s=totalSec%60;
-  const totalMin=Math.floor(totalSec/60);
-  const m=totalMin%60;
-  const h=Math.floor(totalMin/60);
-  const pad=function(n){ return (n<10?'0':'')+n; };
-  return (h>0?(h+':'+pad(m)):pad(m))+':'+pad(s)+'.'+pad(cs);
-}
-function swEnsureTicker(){
-  if(swTickInterval) return;
-  swTickInterval=setInterval(function(){
-    let anyRunning=false;
-    Object.keys(swState).forEach(function(id){
-      const s=swState[id];
-      if(!s.running) return;
-      anyRunning=true;
-      const timeEl=document.getElementById('swtime-'+id);
-      if(timeEl) timeEl.textContent=swFormat(swElapsedMs(id));
-    });
-    if(!anyRunning){ clearInterval(swTickInterval); swTickInterval=null; }
-  },100); // 10 разів/сек — досить плавно для сотих секунди, не надто часто
-}
-// SVG-іконки для кнопок секундоміра (17.08.2026) — той самий стиль, що й
-// у музичного плеєра (play=трикутник, pause=два прямокутники), тому
-// "▶"/"⏸" тут — не текстові емодзі, а чисті SVG, як у mkAudioTile/
-// updateAudioTilesUI (щоб рендерились однаково на всіх пристроях/шрифтах,
-// а не залежали від того, яку емодзі-палітру дає конкретна ОС).
-const SW_ICON_PLAY='<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="7,4 20,12 7,20"/></svg>';
-const SW_ICON_PAUSE='<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4.5" height="16" rx="1.2"/><rect x="13.5" y="4" width="4.5" height="16" rx="1.2"/></svg>';
-const SW_ICON_STOP='<svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>';
-function swRefreshButtons(id){
-  const btn=document.getElementById('swbtn-'+id);
-  if(!btn) return;
-  const running=swGetState(id).running;
-  btn.innerHTML=running?SW_ICON_PAUSE:SW_ICON_PLAY;
-  btn.setAttribute('aria-label', running?'Пауза':'Старт');
-}
-function swToggle(id){
-  const s=swGetState(id);
-  if(s.running){
-    s.elapsedMs+=Date.now()-s.startEpoch;
-    s.running=false; s.startEpoch=null;
-  }else{
-    s.startEpoch=Date.now();
-    s.running=true;
-    swEnsureTicker();
-  }
-  swRefreshButtons(id);
-}
-function swStop(id){
-  const s=swGetState(id);
-  s.running=false; s.startEpoch=null; s.elapsedMs=0;
-  const timeEl=document.getElementById('swtime-'+id);
-  if(timeEl) timeEl.textContent=swFormat(0);
-  swRefreshButtons(id);
-}
-function mkStopwatchTile(tile){
-  const id=tile.id;
-  const running=swGetState(id).running;
-  const wrap=document.createElement('div');wrap.className='sw-tile-inner';
-  wrap.innerHTML=
-    '<div class="sw-time" id="swtime-'+id+'">'+swFormat(swElapsedMs(id))+'</div>'+
-    '<div class="sw-controls">'+
-      '<button class="at-btn sw-reset" type="button" aria-label="Стоп">'+SW_ICON_STOP+'</button>'+
-      '<button class="at-btn at-play sw-toggle" id="swbtn-'+id+'" type="button" aria-label="'+(running?'Пауза':'Старт')+'">'+(running?SW_ICON_PAUSE:SW_ICON_PLAY)+'</button>'+
-    '</div>';
-  wrap.querySelector('.sw-toggle').addEventListener('click', function(e){ e.stopPropagation(); swToggle(id); });
-  wrap.querySelector('.sw-reset').addEventListener('click', function(e){ e.stopPropagation(); swStop(id); });
-  if(running) swEnsureTicker(); // секундомір йшов до re-render — тикеру продовжити оновлювати НОВИЙ DOM-вузол
-  return wrap;
-}
-
 function mkAudioTile(){
   const wrap=document.createElement('div');wrap.className='audio-tile-inner empty';
   wrap.innerHTML=
@@ -7029,7 +6912,6 @@ function onUnexpectedDisconnect(){
 const TILE_SIZE_RULES = {
   MapTile:       {ok:['s22','s23'],       fallback:'s22'},
   AudioTile:     {ok:['s41','s22','s23'], fallback:'s41'},
-  StopwatchTile: {ok:['s41','s22','s23'], fallback:'s41'},
   WeatherTile:   {ok:['s21'],             fallback:'s21'},
   QuadTile:      {ok:['s21'],             fallback:'s21'}   // 03.11.2026   // 02.11.2026: «Погода» — лише 1×1
 };
@@ -7057,6 +6939,12 @@ if(!workspaces || !Array.isArray(workspaces) || !workspaces.length){
   const oldLay = lg('lay2');
   workspaces = [{id:'w1', name:'Стіл 1', lay: oldLay || dl()}];
 }
+// 21.11.2026: тихо викидаємо плитки «Карта» (мала) та «Секундомір» зі збережених столів
+try{
+  let _dropMig=false;
+  workspaces.forEach(function(w){ const n0=w.lay.length; w.lay=w.lay.filter(function(t){ return t.k!=='MapTile' && t.k!=='StopwatchTile'; }); if(w.lay.length!==n0) _dropMig=true; });
+  if(_dropMig) ls('workspaces', workspaces);
+}catch(e){}
 // Міграція: збережені плитки з вилученими розмірами → найближчий дозволений
 try{
   let _szMig=false;
@@ -7321,7 +7209,7 @@ function render(){
   // — обгортка не потрібна, той тайл іде прямим елементом сітки, як і
   // завжди. DOM-порядок вставки обгортки в #gi тут НЕ впливає на її
   // позицію (та фіксована в CSS) — тож просто додаємо в кінець.
-  const STACK_TYPES=['MapTile','AudioTile','StopwatchTile'];
+  const STACK_TYPES=['AudioTile'];
   const stackCount=lay.filter(t=>STACK_TYPES.includes(t.k)).length;
   let stackWrap=null;
   if(stackCount>=2){
@@ -7346,27 +7234,7 @@ function render(){
     gi.appendChild(ab);
   }
 
-  // Прибираємо "осиротілі" інстанси карти — якщо плитки карти більше нема в
-  // ПОТОЧНОМУ розкладі (наприклад, перемкнувся на інший робочий стіл без
-  // карти), її DOM-вузол щойно стерло через gi.innerHTML='' вище, але сам
-  // JS-об'єкт Leaflet-карти в mapInstances так і лишався б жити далі й
-  // тихо отримувати оновлення GPS-позиції (а отже — потенційно й далі
-  // тягнути/кешувати тайли у фоні), поки не перезавантажиш сторінку.
-  const liveIds = new Set(lay.map(t=>t.id));
-  Object.keys(mapInstances).forEach(id=>{
-    if(!liveIds.has(id) && id!=='ghostmap'){ // 12.10.2026: ghostmap живе поза розкладом плиток
-      try{ ['nowTimer','windTimer'].forEach(function(k){ if(mapInstances[id][k]){ clearInterval(mapInstances[id][k]); mapInstances[id][k]=null; } }); }catch(e){} // 02.11.2026: таймери радара/вітру видаленої карти більше не крутяться вхолосту (раніше «крадли» нові кадри й не давали оповіщенню спрацювати)
-      try{ mapInstances[id].map.remove(); }catch(e){}
-      delete mapInstances[id];
-    }
-  });
-  // 17.08.2026: той самий принцип для секундомірів — якщо плитку прибрали
-  // з розкладу, її запис у swState (і потенційно "вічний" тикер, якщо він
-  // саме йшов) більше нікому не потрібен.
-  Object.keys(swState).forEach(id=>{
-    if(!liveIds.has(id)) delete swState[id];
-  });
-
+  // 21.11.2026: карта більше не плитка розкладу — живе лише як прихований повноекранний хост («ghostmap»), render() її не чіпає.
   try{ updateAudioTilesUI(); }catch(e){}
   try{ applyAudioCalibration(); }catch(e){}
   try{ applyBottomRowAutoHeight(); }catch(e){}
@@ -7385,12 +7253,6 @@ function mkTile(tile){
   rm.addEventListener('click',(e)=>{
     e.stopPropagation();
     if(dragTile && dragTile.id===tile.id){ dragTile=null; dragEl=null; } // вибрану плитку якраз видаляють — не лишаємо застарілу посилання
-    if(tile.k==='MapTile' && mapInstances[tile.id]){
-      try{ ['nowTimer','windTimer'].forEach(function(k){ if(mapInstances[tile.id][k]){ clearInterval(mapInstances[tile.id][k]); mapInstances[tile.id][k]=null; } }); }catch(err){} // 02.11.2026
-      try{ mapInstances[tile.id].map.remove(); }catch(err){}
-      try{ if(mapInstances[tile.id].resizeObserver) mapInstances[tile.id].resizeObserver.disconnect(); }catch(err){}
-      delete mapInstances[tile.id];
-    }
     lay=lay.filter(t=>t.id!==tile.id);saveLay();render();
   });
   el.appendChild(rm);
@@ -7408,9 +7270,6 @@ function mkTile(tile){
   }else if(tile.k==='AudioTile'){
     el.classList.add('audio-tile');
     el.appendChild(mkAudioTile());
-  }else if(tile.k==='StopwatchTile'){
-    el.classList.add('stopwatch-tile');
-    el.appendChild(mkStopwatchTile(tile));
   }else if(tile.k==='WeatherTile'){
     el.classList.add('weather-tile');
     el.appendChild(mkWeatherTile(tile));
@@ -21254,19 +21113,14 @@ document.getElementById('pipBtnTop').addEventListener('click', function(){
   // 13.10.2026: кнопка «Карта» не залежить від розміру плитки (2×2 / 2×3). Беремо лише ЖИВІ екземпляри, чия плитка справді в DOM.
   // Раніше «осиротілий» екземпляр (плитки вже нема на екрані) знаходився першим, enterMapFullscreen мовчки виходив (tileEl=null) — і карта не відкривалась.
   function _log(m){ try{ dbgEv('[MAP-BTN] '+m); }catch(e){} }
-  const all=Object.keys(mapInstances||{}).map(function(i){ return mapInstances[i]; }).filter(Boolean);
-  const attached=all.filter(function(q){ return q.viewportEl && document.body.contains(q.viewportEl) && q.viewportEl.closest('.tile'); });
-  _log('екземплярів='+all.length+', живих='+attached.length+' ['+attached.map(function(q){ return q.tileId+':'+q.viewportEl.closest('.tile').className.replace(/\s+/g,'.'); }).join(' | ')+']');
-  const open=attached.filter(function(q){ return q.routeViewMode; })[0];
-  if(open){ try{ exitMapFullscreenAnimated(open); }catch(e){ _log('exit помилка: '+e.message); } return; }
-  // прибираємо застарілий прихований екземпляр, якщо він «завис» без плитки
-  all.forEach(function(q){ if(q.tileId==='ghostmap' && attached.indexOf(q)<0){ try{ q.map.remove(); }catch(e){} delete mapInstances['ghostmap']; _log('прибрано застарілу приховану карту'); } });
-  const real=attached.filter(function(q){ return q.tileId!=='ghostmap'; })[0] || attached[0];
-  if(real){
-    try{ enterMapFullscreen(real); if(!real.routeViewMode) _log('enterMapFullscreen не відкрив карту (routeViewMode=false)'); }
-    catch(e){ _log('enter помилка: '+e.message); sht('Карта: '+e.message); }
+  // 21.11.2026: малої карти більше нема — є лише один повноекранний екземпляр («ghostmap», прихований хост). Відкрита → закрити; інакше створити й відкрити.
+  const gm=mapInstances['ghostmap'];
+  if(gm && gm.viewportEl && document.body.contains(gm.viewportEl)){
+    if(gm.routeViewMode){ try{ exitMapFullscreenAnimated(gm); }catch(e){ _log('exit помилка: '+e.message); } return; }
+    try{ enterMapFullscreen(gm); }catch(e){ _log('enter помилка: '+e.message); sht('Карта: '+e.message); }
     return;
   }
+  if(gm){ try{ gm.map.remove(); }catch(e){} delete mapInstances['ghostmap']; }
   // плитки карти на екрані немає — створюємо прихований екземпляр («ghostmap») і відкриваємо на весь екран
   try{
     const tile={k:'MapTile', id:'ghostmap', sz:'s22'};
@@ -21663,10 +21517,6 @@ function cpk(){
     
     const db=document.createElement('button');db.className='ab dn';db.innerHTML='<svg viewBox="0 0 24 24" width="14" height="14" style="vertical-align:-2px;" fill="currentColor"><path d="M9.5 3h5l.8 1.5H19v1.7H5V4.5h3.7L9.5 3zM6.3 8h11.4l-.9 11.2a2 2 0 0 1-2 1.8H9.2a2 2 0 0 1-2-1.8L6.3 8zm3.2 2v8h1.4v-8H9.5zm3 0v8h1.4v-8H12.5zm3 0v8h1.4v-8H15.5z"/></svg> Видалити';
     db.addEventListener('click',()=>{
-      if(ptile.k==='MapTile' && mapInstances[ptile.id]){
-        try{ mapInstances[ptile.id].map.remove(); }catch(err){}
-        delete mapInstances[ptile.id];
-      }
       lay=lay.filter(t=>t.id!==ptile.id);saveLay();m.classList.remove('sh');render();
     });
     pb.appendChild(db);
@@ -21674,11 +21524,11 @@ function cpk(){
   } else if(editMode && !ptile){
     document.getElementById('pt').textContent='Додати нову плитку';
     const pl=document.createElement('div');pl.className='pl';
-    Object.keys(P).forEach(k=>{
+    Object.keys(P).filter(function(k){ return k!=='MapTile'; }).forEach(k=>{   // 21.11.2026: плитки «Карта» (мала) і «Секундомір» прибрано
       const item=document.createElement('div');item.className='pi';
       item.innerHTML=`<div class="pn2">${P[k].n}</div>`;
       item.addEventListener('click',()=>{
-        nid++;const nt={id:'t'+nid,k:k,st:'flat',sz:(k==='MapTile'?'s22':((k==='WeatherTile'||k==='QuadTile')?'s21':((k==='AudioTile'||k==='StopwatchTile')?'s41':'s1')))};
+        nid++;const nt={id:'t'+nid,k:k,st:'flat',sz:((k==='WeatherTile'||k==='QuadTile')?'s21':((k==='AudioTile')?'s41':'s1'))};
         lay.push(nt);saveLay();m.classList.remove('sh');render();
       });pl.appendChild(item);
     });
