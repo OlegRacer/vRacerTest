@@ -555,6 +555,8 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bor
 .tile.map-fullscreen{position:fixed!important;top:0!important;right:0!important;bottom:0!important;left:0!important;
   height:auto!important; /* 29.09.2026: страховка — жодна inline-висота (340px з applyManualLandscapeMapHeight) не має права підрізати fullscreen знизу */
   z-index:5000;border-radius:0!important;overscroll-behavior:none;touch-action:none;}
+/* 21.11.2026: верхній бар лишається видимим поверх повноекранної карти (карта більше не «мала» плитка, що його не перекривала) */
+body:has(.tile.map-fullscreen):not(.rain-mode-active) .tb{z-index:5600;}
 /* Темна тема карти — просто інвертуємо кольори звичайних (світлих) OSM-тайлів,
    без окремого набору "нічних" тайлів. */
 /* 16.09.2026: .map-theme-dark (CSS-інверсія) видалено — тема тепер лише
@@ -1227,7 +1229,7 @@ body.hide-cam-radar .cam-radar-badge{display:none !important;}
 
 <div class="mb" id="em">
   <div class="ms">
-    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 21.11.2026 18:36)</span></h3><button class="mc2" id="emc">✕</button></div>
+    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 21.11.2026 19:05)</span></h3><button class="mc2" id="emc">✕</button></div>
     <div class="tbar">
       <div class="tab a" id="t0" onclick="st(0)">ЕКРАН</div>
       <div class="tab" id="t1" onclick="st(1)">СИГНАЛИ</div>
