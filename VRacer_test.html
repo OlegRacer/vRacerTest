@@ -1227,7 +1227,7 @@ body.hide-cam-radar .cam-radar-badge{display:none !important;}
 
 <div class="mb" id="em">
   <div class="ms">
-    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 21.11.2026 12:25)</span></h3><button class="mc2" id="emc">✕</button></div>
+    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 21.11.2026 18:36)</span></h3><button class="mc2" id="emc">✕</button></div>
     <div class="tbar">
       <div class="tab a" id="t0" onclick="st(0)">ЕКРАН</div>
       <div class="tab" id="t1" onclick="st(1)">СИГНАЛИ</div>
@@ -4776,7 +4776,9 @@ let _gpsLastFixTs=0, _gpsDeniedToast=false, _gpsLastRestartTs=0;
 function gpsOnPos(pos){
   if(window._simRun && !pos._sim) return; // 04.10.2026: поки йде симуляція поїздки, справжні GPS-фікси ігноруємо (не «телепортують» машину)
   _gpsLastFixTs=Date.now(); _gpsDeniedToast=false;
-  V.GPS=pos.coords.speed!=null?Math.round(pos.coords.speed*3.6):0;
+  const _gk=pos.coords.speed!=null?Math.round(pos.coords.speed*3.6):0;
+  V.GPS=_gk;
+  try{ spdFromGps(pos.coords.speed!=null?pos.coords.speed*3.6:null, pos.coords.accuracy); spdApply(true,_gk); }catch(e){}   // 21.11.2026: корекція/вибір джерела швидкості
   V.Alt=pos.coords.altitude!=null?Math.round(pos.coords.altitude):'--';
   _lastLat=pos.coords.latitude; _lastLon=pos.coords.longitude;
   _lastAlt=pos.coords.altitude; _lastSpeedMps=pos.coords.speed; _lastHeading=pos.coords.heading;
@@ -6214,9 +6216,74 @@ async function initSession(){
   }
 }
 
+
+/* ═══ 21.11.2026: ШВИДКІСТЬ СКУТЕРА З ECU (байт №16 пакета) + корекція за GPS ═══
+   Байт [16] знайдено «Діагностикою» (збігається зі швидкістю). Сирий байт × коефіцієнт k = км/год; k підганяється під GPS на ходу (метод найменших квадратів
+   через нуль, лише коли GPS точний ≤20 м і швидкість ≥8 км/год, 12 вибірок → плавне оновлення), зберігається. Режим «Авто»: показуємо GPS, а коли GPS зник/застарів
+   (тунель, слабкий сигнал) — швидкість із ECU; режим «ECU»: завжди ECU, коли відкалібрований (швидший відгук), GPS лише калібрує. */
+const SPD={raw:null,rawTs:0,gpsKmh:null,gpsTs:0,gpsAcc:null,k:+lg('spd_k')||1,n:+lg('spd_n')||0,mode:lg('spd_mode')||'auto',len:+lg('spd_len')||20,idx:(lg('spd_idx')!=null?+lg('spd_idx'):16),buf:[],win:[],src:'gps',rawMax:0};
+function spdCalibrated(){ return SPD.n>=20; }
+function spdEcuKmh(){ return SPD.raw==null?null:Math.round(SPD.raw*SPD.k); }
+function spdFromRaw(r){ const t=Date.now(); SPD.raw=r; SPD.rawTs=t; if(r>SPD.rawMax) SPD.rawMax=r; SPD.win.push([t,r]); while(SPD.win.length && t-SPD.win[0][0]>1500) SPD.win.shift(); spdApply(false); }
+function spdFromGps(kmh,acc){ SPD.gpsKmh=(kmh==null?null:kmh); SPD.gpsTs=Date.now(); SPD.gpsAcc=acc; spdCalib(); }
+function spdCalib(){
+  const now=Date.now();
+  if(SPD.raw==null || SPD.gpsKmh==null || now-SPD.rawTs>500 || now-SPD.gpsTs>500) return;
+  let lo=255,hi=0; SPD.win.forEach(function(x){ if(x[1]<lo) lo=x[1]; if(x[1]>hi) hi=x[1]; }); if(hi-lo>2) return;   // калібруємо лише на рівній швидкості (GPS і ECU не синхронні)
+  if(!(SPD.gpsAcc<=20) || SPD.gpsKmh<8 || SPD.raw<3) return;
+  const ratio=SPD.gpsKmh/SPD.raw;
+  if(spdCalibrated() && (ratio<SPD.k*0.6 || ratio>SPD.k*1.6)) return;   // викид (GPS-стрибок)
+  SPD.buf.push([SPD.gpsKmh,SPD.raw]);
+  if(SPD.buf.length>=12){
+    let sgr=0,srr=0; SPD.buf.forEach(function(x){ sgr+=x[0]*x[1]; srr+=x[1]*x[1]; });
+    const kn=srr>0?sgr/srr:SPD.k;
+    SPD.k=SPD.n<20?(SPD.n===0?kn:SPD.k*0.5+kn*0.5):SPD.k*0.9+kn*0.1;
+    SPD.n+=SPD.buf.length; SPD.buf=[];
+    try{ ls('spd_k',SPD.k); ls('spd_n',SPD.n); }catch(e){}
+  }
+}
+// повертає {kmh,src}
+function spdPick(gpsKmhNow){
+  const now=Date.now(), ecuOk=SPD.raw!=null && now-SPD.rawTs<2000 && spdCalibrated();
+  const gpsOk=SPD.gpsTs && now-SPD.gpsTs<4000;
+  if(SPD.mode==='ecu' && ecuOk) return {kmh:spdEcuKmh(),src:'ecu'};
+  if(gpsOk) return {kmh:(gpsKmhNow!=null?gpsKmhNow:Math.round(SPD.gpsKmh||0)),src:'gps'};
+  if(ecuOk) return {kmh:spdEcuKmh(),src:'ecu'};
+  return null;
+}
+function spdApply(fromGps,gpsKmhNow){
+  if(window._simRun) return;
+  const r=spdPick(gpsKmhNow); if(!r) return;
+  SPD.src=r.src;
+  if(r.src==='ecu' || fromGps){ V.GPS=r.kmh; try{ applySpeedZoom(V.GPS); }catch(e){} }
+}
+setInterval(function(){ try{ if(SPD.mode==='auto' && SPD.gpsTs && Date.now()-SPD.gpsTs>=4000 && SPD.raw!=null) spdApply(false); }catch(e){} },2000);
+function spdSetMode(m){ SPD.mode=m; try{ ls('spd_mode',m); }catch(e){} spdRefresh(); }
+function spdReset(){ SPD.k=1; SPD.n=0; SPD.buf=[]; try{ ls('spd_k',1); ls('spd_n',0); }catch(e){} spdRefresh(); }
+function spdSetLen(l){ SPD.len=l; try{ ls('spd_len',l); }catch(e){} spdRefresh(); }
+function spdRefresh(){
+  const o=document.getElementById('spdOut'); if(!o){ if(SPD.iv){ clearInterval(SPD.iv); SPD.iv=null; } return; }
+  const now=Date.now(), age=SPD.rawTs?Math.round((now-SPD.rawTs)/100)/10:null;
+  o.textContent='Байт ['+SPD.idx+'] у пакеті '+SPD.len+' Б: '+(SPD.raw==null?'пакетів ще нема':(SPD.raw+' (оновлено '+age+' с тому, макс '+SPD.rawMax+')'))
+   +'\nECU км/год = байт × k = '+(SPD.raw==null?'—':spdEcuKmh())
+   +'\nGPS км/год: '+(SPD.gpsKmh==null?'—':Math.round(SPD.gpsKmh))+(SPD.gpsAcc!=null?' (±'+Math.round(SPD.gpsAcc)+' м)':'')
+   +'\nКоефіцієнт k = '+SPD.k.toFixed(3)+' · вибірок '+SPD.n+(spdCalibrated()?' ✓ відкалібровано':' (потрібно ≥20: їдьте >8 км/год з GPS)')
+   +'\nРежим: '+(SPD.mode==='ecu'?'ECU (GPS лише калібрує)':'Авто (GPS, при втраті — ECU)')+' · зараз джерело: '+SPD.src.toUpperCase();
+}
+function spdHtml(){
+  const bs='flex:1;margin:0;background:#222;color:#fff;';
+  if(!SPD.iv) SPD.iv=setInterval(spdRefresh,1000);
+  setTimeout(spdRefresh,50);
+  return '<div style="font-size:12px;font-weight:700;color:#ffb300;padding-top:16px;">🛵 ШВИДКІСТЬ З ECU (КОРЕКЦІЯ ПО GPS)</div>'
+   +'<div style="font-size:12px;color:var(--muted);padding:2px 5px 8px;line-height:1.5;">Байт швидкості з Діагностики. Їдьте з GPS кілька хвилин — коефіцієнт підженеться сам. Далі швидкість не залежить від GPS.</div>'
+   +'<div style="display:flex;gap:6px;padding:0 0 6px;"><button type="button" class="ab" style="'+bs+'" onclick="spdSetMode(\'auto\')">Авто</button><button type="button" class="ab" style="'+bs+'" onclick="spdSetMode(\'ecu\')">ECU</button><button type="button" class="ab" style="'+bs+'" onclick="spdReset()">Скинути k</button></div>'
+   +'<div style="display:flex;gap:6px;padding:0 0 6px;"><button type="button" class="ab" style="'+bs+'" onclick="spdSetLen(20)">Пакет 20 Б</button><button type="button" class="ab" style="'+bs+'" onclick="spdSetLen(19)">Пакет 19 Б</button></div>'
+   +'<pre id="spdOut" style="white-space:pre-wrap;font-size:11px;line-height:1.45;margin:4px 0 0;padding:8px;background:#111;border-radius:8px;color:#ddd;"></pre>';
+}
 function parse20Byte(pkt){
   if(pkt.length !== 20) return false;
   if(pkt[0] === 0xfc) return false;
+  if(SPD.len===20 && pkt.length>SPD.idx){ try{ spdFromRaw(pkt[SPD.idx]); }catch(e){} }   // 21.11.2026: швидкість ECU
   const teng = pkt[6] - 28;
   const rpm  = (pkt[2]<<8)|pkt[3];
   const volt = pkt[5] / 10.0;
@@ -6278,6 +6345,7 @@ function parse20Byte(pkt){
 // або спростовані, або занадто шумні.
 function parse19Byte(pkt){
   if(pkt.length !== 19) return false;
+  if(SPD.len===19 && pkt.length>SPD.idx){ try{ spdFromRaw(pkt[SPD.idx]); }catch(e){} }   // 21.11.2026: швидкість ECU
   const injRaw = pkt[7];
   if(injRaw >= 0 && injRaw <= 255){
     V.Inj_Rate = (injRaw*0.39+0.01).toFixed(2);
@@ -20346,6 +20414,7 @@ function renderTestSettingsTab(body){
     +'<button type="button" class="ab" style="flex:1;margin:0;background:#222;color:#fff;" onclick="trafficProbeCopy()">📋 Копіювати результат</button></div>'
     +'<div style="padding:0 0 6px;"><button type="button" class="ab" id="trfCalBtn" style="margin:0;background:#222;color:#fff;" onclick="trafficCalib()">🎯 Калібрування рівнів: рівні, швидкості й ділянки біля мене</button></div>'
     +'<pre id="trfOut" style="display:'+(_trfTxt?'block':'none')+';white-space:pre-wrap;word-break:break-all;font-size:10px;line-height:1.35;margin:4px 0 0;padding:8px;background:#111;border-radius:8px;color:#cde;">'+String(_trfTxt||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</pre>'
+    +spdHtml()
     +measHtml()
     +pmonHtml()
     +'<div style="font-size:12px;font-weight:700;color:#ffb300;padding-top:16px;">🔬 ШАРИ КАРТИ — вимикай по одному, щоб знайти винуватця (після перезавантаження все знову увімкнено)</div>'
