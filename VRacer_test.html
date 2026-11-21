@@ -573,22 +573,6 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bor
 .map-tile-badge:active{background:rgba(55,224,230,0.9);color:#000;transform:scale(1.15);}
 .map-tile-offline{color:#4ade80;}
 .map-tile-online{color:#ffd23f;}
-/* 05.09.2026: "час, що лишився до кінця поїздки" — знизу-зліва плитки
-   (там, де на скріншоті обведено червоним) — щоб не перекриватись із
-   ONLINE/OFFLINE (той праворуч-згори) і з turn-mini (той угорі, лівіше).
-   Показується ЛИШЕ на маленькій (не fullscreen) плитці карти, поки
-   триває навігація по маршруту з відомою плановою тривалістю — див.
-   updateTripEtaBadge(). Фон/тінь/заокруглення підігнано під показник
-   повороту (.map-tile-turn-mini) за проханням користувача — той самий
-   майже-чорний фон rgba(0,0,0,0.82) + box-shadow. Текст БІЛИЙ (не
-   чорний, як спершу просили) — чорний на такому темному фоні був би
-   невидимий; якщо малось на увазі навпаки (світлий фон, чорний текст) —
-   легко поміняти. Кольору "відстаю від графіка → червоний" (як у Google
-   Maps) наразі НЕМАЄ — колір завжди один, ця фіча не реалізована. */
-.map-tile-eta-badge{position:absolute;bottom:6px;left:8px;z-index:500;font-size:16px;font-weight:700;letter-spacing:1px;
-  color:#fff;background:rgba(0,0,0,0.82);padding:5px 10px;border-radius:12px;pointer-events:none;
-  box-shadow:0 3px 10px rgba(0,0,0,0.5);
-  text-transform:uppercase;display:none;font-family:'JetBrains Mono',monospace;}
 
 /* ── НАВІГАЦІЯ (поворот-за-поворотом) — HUD поверх повноекранної карти.
    Мінімальний функціональний стиль — окремий дизайн-прохід по всій програмі
@@ -917,54 +901,6 @@ html.ar-landscape .desc-row span{order:1;}
 }
 
 
-/* Міні-індикатор повороту — на МАЛЕНЬКІЙ (не fullscreen) плитці карти,
-   зверху зліва (там, де раніше сидів бейдж ONLINE/OFFLINE — його
-   перенесено праворуч, див. .map-tile-badge вище). Ховається у fullscreen
-   (там уже є велика HUD-картка) і коли немає найближчого маневру.
-   Збільшено — на маленькій плитці попередня версія губилась на ходу. */
-.map-tile-turn-mini{
-  display:none; position:absolute; top:6px; left:8px; z-index:500;
-  background:rgba(0,0,0,0.82); border-radius:12px; padding:7px 12px;
-  align-items:center; gap:9px; pointer-events:none;
-  box-shadow:0 3px 10px rgba(0,0,0,0.5);
-}
-.map-tile-turn-mini-arrow{width:28px;height:28px;flex-shrink:0;}
-.map-tile-turn-mini-arrow svg{width:100%;height:100%;display:block;fill:none;stroke:#fff;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;}
-.map-tile-turn-mini-dist{font-size:19px;font-weight:800;color:#fff;font-family:'JetBrains Mono',monospace;white-space:nowrap;}
-
-/* Міні-бейдж "Відхилення від маршруту" — та сама роль, що й navOffEl/
-   .nav-reroute-btn у fullscreen, тільки для маленької плитки. "Приклеєний"
-   впритул під показник повороту (той не ховається під час відхилення —
-   лишається зверху, бейдж просто додається знизу, як друга секція тієї
-   самої картки). ВЕСЬ бейдж — одна велика зона дотику (pointer-events:auto
-   на самому елементі, не на маленькій кнопці всередині — раніше зона була
-   лише 22×22px, важко влучити на ходу). */
-.map-tile-offroute-mini{
-  display:none; position:absolute; top:50px; left:8px; z-index:500;
-  background:rgba(255,77,77,0.92); border-radius:12px; padding:10px 14px;
-  align-items:center; font-size:12px; font-weight:700; color:#fff;
-  box-shadow:0 3px 10px rgba(0,0,0,0.5); cursor:pointer; pointer-events:auto;
-  max-width:200px; line-height:1.3;
-}
-.map-tile-offroute-mini:active{background:rgba(255,40,40,0.95);}
-
-/* Міні-кнопка "Перебудувати маршрут" — 25.08.2026: за проханням, пара до
-   .map-tile-offroute-mini зліва, дзеркально праворуч, той самий top:50px.
-   На відміну від .map-tile-offroute-mini (з'являється лише під час
-   реального відхилення), ця кнопка доступна ЗАВЖДИ, поки є завантажений
-   і видимий маршрут (та сама умова показу, що й у .map-tile-turn-mini) —
-   ручний перерахунок від поточної позиції в будь-який момент, не чекаючи
-   виявленого відхилення. Колір — зелений (на відміну від червоного
-   зліва), щоб дві кнопки не плутались візуально. */
-.map-tile-reroute-mini{
-  display:none; position:absolute; top:50px; right:8px; z-index:500;
-  background:rgba(46,204,113,0.92); border-radius:12px; padding:10px 14px;
-  align-items:center; font-size:12px; font-weight:700; color:#fff;
-  box-shadow:0 3px 10px rgba(0,0,0,0.5); cursor:pointer; pointer-events:auto;
-  max-width:200px; line-height:1.3;
-}
-.map-tile-reroute-mini:active{background:rgba(30,170,95,0.95);}
-
 /* МУЗИЧНИЙ МІНІ-ПЛЕЄР (плитка "Музика") */
 .audio-tile-inner{width:100%;height:100%;display:flex;flex-direction:column;
   align-items:center;justify-content:center;padding:6px 10px;gap:4px;position:relative;}
@@ -1291,7 +1227,7 @@ body.hide-cam-radar .cam-radar-badge{display:none !important;}
 
 <div class="mb" id="em">
   <div class="ms">
-    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 21.11.2026 11:23)</span></h3><button class="mc2" id="emc">✕</button></div>
+    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 21.11.2026 12:25)</span></h3><button class="mc2" id="emc">✕</button></div>
     <div class="tbar">
       <div class="tab a" id="t0" onclick="st(0)">ЕКРАН</div>
       <div class="tab" id="t1" onclick="st(1)">СИГНАЛИ</div>
@@ -7077,7 +7013,6 @@ function handleGridViewportResize(){
   // забув додати. Тому після КОЖНОГО повороту екрана/появи клавіатури
   // карта провалювалась до того, що сама порахує CSS-сітка (менше за
   // 340px) — саме це і є "щось примусово зменшує карту після повороту".
-  try{ applyManualLandscapeMapHeight(); }catch(e){}
 }
 window.addEventListener('resize', handleGridViewportResize);
 window.addEventListener('orientationchange', handleGridViewportResize);
@@ -7111,31 +7046,6 @@ const LANDSCAPE_BOTTOM_ROW_H = 123; // 11.09.2026: 123 (було 124) — узг
 // без жодних вимірювань чи "вирівнювань під щось" — просто те число, яке
 // сказали. Ізольовано від applyBottomRowAutoHeight() навмисно: щоб
 // баги/зміни в одному місці НІКОЛИ не могли зачепити інше.
-function applyManualLandscapeMapHeight(){
-  const isLandscape=document.documentElement.classList.contains('ar-landscape');
-  const giEl=document.getElementById('gi');
-  if(!giEl) return;
-  const mapTileEl=giEl.querySelector('.tile.s23');
-  // 29.09.2026: НЕ чіпаємо плитку, що зараз у fullscreen — resize (iOS) під час руху карти
-  // ставив їй inline 340px і підрізав карту знизу (верхнього/нижнього top/bottom:0 було замало)
-  if(mapTileEl && isLandscape && MapCfg.landscapeMapH>0 && !mapTileEl.classList.contains('map-fullscreen')){
-    mapTileEl.style.height=MapCfg.landscapeMapH+'px';
-  }
-  // isLandscape===false АБО landscapeMapH===0 → інлайн-висоту НЕ чіпаємо
-  // взагалі (навіть не скидаємо на '') — applyBottomRowAutoHeight() уже
-  // зробив це для ВСІХ тайлів на початку своєї роботи, тож s23 і так
-  // чистий, коли це налаштування вимкнене.
-
-  // 05.09.2026: Карта(s22)+Плеєр/Секундомір БІЛЬШЕ НЕ обробляються тут —
-  // усі спроби ручного height/margin-top для окремих грід-елементів
-  // впирались у нові й нові грід-пастки (stretch по спільному ряду з
-  // T_ENG/GPS, safe-area знизу для 2-рядкової карти тощо). Тепер ними
-  // керує .tile-stack — окрема flex-колонка з ФІКСОВАНИМИ координатами в
-  // сітці (не auto-placement) — див. render(). Ця функція лишається
-  // відповідальною ЛИШЕ за s23 (велика ручна карта), як і задумано з
-  // 21.08.2026 — ізольовано, щоб баги в одному місці ніколи не чіпали
-  // інше.
-}
 function applyBottomRowAutoHeight(){
   const giEl=document.getElementById('gi');
   if(!giEl) return;
@@ -7238,7 +7148,6 @@ function render(){
   try{ updateAudioTilesUI(); }catch(e){}
   try{ applyAudioCalibration(); }catch(e){}
   try{ applyBottomRowAutoHeight(); }catch(e){}
-  try{ applyManualLandscapeMapHeight(); }catch(e){}
 }
 
 function mkTile(tile){
@@ -9975,25 +9884,7 @@ new MutationObserver(function(){ navOffBtnsEl.style.display = (navOffEl.style.di
     rebuildRouteFromHere(); // 29.09.2026: від поточної позиції до Фінішу
   });
 
-  // Міні-індикатор повороту — та сама інформація, що й у fullscreen HUD,
-  // але маленька, для звичайної (не fullscreen) плитки на дашборді.
-  // Ховається сама в enterMapFullscreen (там уже є велика картка).
-  const turnMiniEl=document.createElement('div');
-  turnMiniEl.className='map-tile-turn-mini';
-  turnMiniEl.id='turnMini_'+tileId;
-  turnMiniEl.innerHTML=
-    '<div class="map-tile-turn-mini-arrow"><svg viewBox="0 0 24 22"><path id="turnMiniArrowPath_'+tileId+'" d="M 12 20 L 12 4 M 7 9 L 12 4 L 17 9"/></svg></div>'+
-    '<div class="map-tile-turn-mini-dist" id="turnMiniDist_'+tileId+'">--</div>';
-  viewport.appendChild(turnMiniEl);
-
-  // 05.09.2026: бейдж "залишок часу поїздки" — знизу-зліва плитки (див.
-  // коментар біля .map-tile-eta-badge). Текст оновлює updateTripEtaBadge(),
-  // яку викликає processNavHudStep на кожному GPS-тіку.
-  const tripEtaEl=document.createElement('div');
-  tripEtaEl.className='map-tile-eta-badge';
-  tripEtaEl.id='tripEta_'+tileId;
-  viewport.appendChild(tripEtaEl);
-
+  // 21.11.2026: міні-індикатори малої плитки (поворот, ETA, відхилення, перебудова) прибрано разом з малою картою.
   // 26.09.2026: аналогічний бейдж, але для FULLSCREEN — з'являється лише
   // коли натиснуто "Сховати" у planRouteHud (planHudCollapsed), показує і
   // час, і дистанцію (на відміну від tripEtaEl вище, який лише для малої
@@ -10003,37 +9894,6 @@ new MutationObserver(function(){ navOffBtnsEl.style.display = (navOffEl.style.di
   routeMiniEl.id='routeMini_'+tileId;
   routeMiniEl.title='Показати меню маршруту';
   viewport.appendChild(routeMiniEl);
-
-  // Міні-бейдж "Відхилення" — та сама роль, що й navOffEl у fullscreen,
-  // але для звичайної маленької плитки. Візуально "приклеєний" впритул під
-  // показник повороту (той не ховається під час відхилення — просто
-  // додається знизу, як друга секція тієї самої картки). ВЕСЬ бейдж —
-  // єдина велика зона дотику для перерахунку (раніше було лише крихітне
-  // кружечко 22×22px усередині — важко влучити на ходу).
-  const miniOffEl=document.createElement('div');
-  miniOffEl.className='map-tile-offroute-mini';
-  miniOffEl.id='miniOff_'+tileId;
-  miniOffEl.innerHTML='Повернути на маршрут';
-  viewport.appendChild(miniOffEl);
-  miniOffEl.addEventListener('click', e=>{
-  e.stopPropagation();
-  returnToRouteFromHere(); // 02.10.2026: червона = ПОВЕРНУТИСЬ на старий маршрут (зелена «Перебудувати» будує новий до Фінішу)
-});
-
-  // Зелена кнопка "Перебудувати" — 25.08.2026: пара до miniOffEl, дзеркально
-  // праворуч. На відміну від miniOffEl (з'являється лише під час реального
-  // відхилення), доступна ЗАВЖДИ поки є маршрут — див. updateMiniTurnIndicators
-  // нижче (показується/ховається РАЗОМ із turnMiniEl). Той самий ручний
-  // перерахунок від поточної позиції, що й на банері/бейджі зліва.
-  const miniRerouteEl=document.createElement('div');
-  miniRerouteEl.className='map-tile-reroute-mini';
-  miniRerouteEl.id='miniReroute_'+tileId;
-  miniRerouteEl.innerHTML='Перебудова';
-  viewport.appendChild(miniRerouteEl);
-  miniRerouteEl.addEventListener('click', e=>{
-    e.stopPropagation();
-    rebuildRouteFromHere(); // 29.09.2026: від поточної позиції до Фінішу
-  });
 
   const navSoundBtnEl=document.createElement('button');
   navSoundBtnEl.type='button';
@@ -10375,7 +10235,7 @@ map.on('resize move zoom', ()=>{ scheduleNowDraw(st); scheduleWindDraw(st); });
   viewport.appendChild(poiFormBarEl);
 
   const st = { map, hybridLayer, marker, scooterMarker, arrowMarker, badge, wrapEl:container, viewportEl:viewport, tiltWrapEl:container.parentElement, flatIconsLayer, flatIconMirrors:[], cartoLabelsLayer, heading:null, lastDblTap:0, zoomedIn:false, routeLine:null,
-    tileId, navNowBtnEl, nowCanvasEl, navWindBtnEl, navAirBtnEl, navTmpBtnEl, navTrashBtnEl, navTrfBtnEl, windCanvasEl, navHudEl, navHudRightEl, navOffEl, turnMiniEl, tripEtaEl, routeMiniEl, miniOffEl, miniRerouteEl, navSoundBtnEl, navCenterBtnEl, navRouteBtnEl, navPoiBtnEl, navTiltBtnEl, fsTiltOn:false, navCamMarkBtnEl, navZoomInBtnEl, navZoomOutBtnEl, navWeatherBtnEl, radarPanelEl, radarTimeEl, wxCanvasEl, wxFrames:null, wxIndex:0, wxTimer:null, wxRefetchTimer:null, wxGridCenter:null, wxManualCenter:null, navHudActive:false, navReroute:null,
+    tileId, navNowBtnEl, nowCanvasEl, navWindBtnEl, navAirBtnEl, navTmpBtnEl, navTrashBtnEl, navTrfBtnEl, windCanvasEl, navHudEl, navHudRightEl, navOffEl, routeMiniEl, navSoundBtnEl, navCenterBtnEl, navRouteBtnEl, navPoiBtnEl, navTiltBtnEl, fsTiltOn:false, navCamMarkBtnEl, navZoomInBtnEl, navZoomOutBtnEl, navWeatherBtnEl, radarPanelEl, radarTimeEl, wxCanvasEl, wxFrames:null, wxIndex:0, wxTimer:null, wxRefetchTimer:null, wxGridCenter:null, wxManualCenter:null, navHudActive:false, navReroute:null,
     navFollowPaused:false, poiMarkers:[], poiSearching:false, planMarkers:[], planAltLines:[], camMarkers:[], camEditorMode:false, awaitingCamDirTap:null, camDirPreviewMarker:null,
     poiEditorBarEl, poiEditorAddrInput, poiFormBarEl, poiEditorTempMarker:null, poiEditorCandidateMarkers:[], homeMarker:null,
     placeSearchBarEl, placeSearchInput, placeSearchCardsEl, placeSearchActive:false, placeSearchMarkers:[], placeSearchResults:[], placeSearchActiveIdx:-1 };
@@ -10707,53 +10567,8 @@ function diagTiles(st, tag){
 // (Web Animations API), вміст НЕ розтягується. Вихід — дзеркально: спершу
 // стискаємо clip-path до місця плитки в сітці, і лише ПІСЛЯ цього виконуємо
 // справжній exitMapFullscreen. Будь-яка помилка → миттєвий перехід як раніше.
-const FS_ANIM_MS = 380, FS_ANIM_EASE = 'cubic-bezier(.32,.72,0,1)';
-const FS_CLIP_FULL = 'inset(0px 0px 0px 0px round 0px)';
-function fsAnimAllowed(tileEl){
-  try{
-    if(tileEl && tileEl.classList.contains('ghost-map')) return false; // 12.10.2026: прихована карта — без анімації розкриття/закриття
-    return !!(tileEl && tileEl.animate) && !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  }catch(e){ return false; }
-}
-function fsClipFromRect(rect, full){
-  const t=Math.max(0, rect.top-full.top), r=Math.max(0, full.right-rect.right),
-        b=Math.max(0, full.bottom-rect.bottom), l=Math.max(0, rect.left-full.left);
-  return 'inset('+t+'px '+r+'px '+b+'px '+l+'px round 10px)';
-}
-function playFsClip(st, tileEl, fromClip, toClip, onDone){
-  const kf=[{clipPath:fromClip, webkitClipPath:fromClip},{clipPath:toClip, webkitClipPath:toClip}];
-  const anim=tileEl.animate(kf, {duration:FS_ANIM_MS, easing:FS_ANIM_EASE, fill:'forwards'});
-  st._fsAnim=anim;
-  let finished=false;
-  const fin=function(){
-    if(finished) return; finished=true;
-    if(st._fsAnim===anim) st._fsAnim=null;
-    try{ anim.cancel(); }catch(e){}
-    if(onDone) onDone();
-  };
-  anim.onfinish=fin;
-  setTimeout(fin, FS_ANIM_MS+250); // запобіжник
-}
-function exitMapFullscreenAnimated(st){
-  const tileEl=st.viewportEl.closest('.tile');
-  if(!st.routeViewMode || st._fsAnim || !fsAnimAllowed(tileEl)){ if(!st._fsAnim) exitMapFullscreen(st); return; }
-  try{ startBootMask(); }catch(e){} // 30.09.2026: прочерки/заглушка вмикаються ДО початку анімації виходу (анімацію не затримуємо)
-  try{
-    const full=tileEl.getBoundingClientRect();
-    // точний цільовий прямокутник: знімаємо fullscreen на мить, міряємо, вертаємо (без перемальовування)
-    tileEl.classList.remove('map-fullscreen');
-    try{ applyBottomRowAutoHeight(); }catch(e){}
-    try{ applyManualLandscapeMapHeight(); }catch(e){}
-    const slot=tileEl.getBoundingClientRect();
-    tileEl.classList.add('map-fullscreen');
-    tileEl.style.height=''; // інакше inline-висота з сітки ламає fullscreen (див. enterMapFullscreen)
-    if(!(slot.width>20 && slot.height>20)){ exitMapFullscreen(st); return; }
-    playFsClip(st, tileEl, FS_CLIP_FULL, fsClipFromRect(slot, full), function(){ if(st.routeViewMode) exitMapFullscreen(st); });
-  }catch(e){
-    st._fsAnim=null;
-    if(st.routeViewMode) exitMapFullscreen(st);
-  }
-}
+// 21.11.2026: анімацію розкриття/закриття з плитки прибрано (малої плитки нема); вихід — миттєвий.
+function exitMapFullscreenAnimated(st){ if(st.routeViewMode) exitMapFullscreen(st); }
 var _fsOpen=false;
 // 01.10.2026: «поштовх» проти засинання екрана кожні 20с, поки відкрита fullscreen-карта (мінімальне автоблокування iOS = 30с).
 // Якщо відео заморожене — на ~2с його будимо (відео, що грає, скидає таймер сну), потім знову заморожуємо.
@@ -10786,7 +10601,6 @@ function enterMapFullscreen(st){
   try{ document.getElementById('pipBtnTop').classList.add('on'); }catch(e){} // 12.10.2026: кнопка «Карта» підсвічена, поки карта на весь екран
   // 01.10.2026: екран не гасне й у fullscreen-карті: Wake Lock, а вже потім (якщо він утримується) заморожуємо відео
   try{ requestWakeLock().then(function(){ if(_fsOpen) pipFreeze(); }); }catch(e){}
-  const _fsFirstRect = tileEl.getBoundingClientRect(); // 29.09.2026: для анімації розкриття
   st.routeViewMode=true;
   try{ vtEnter(st); }catch(e){ console.warn('[vt]',e); } // 31.10.2026: шари транспорту/смітників
   st.navFollowPaused=false;
@@ -10804,15 +10618,6 @@ function enterMapFullscreen(st){
   // тим, як застосовується fullscreen-режим — тоді top/right/bottom/left
   // з CSS нічим не перекриті.
   tileEl.style.height='';
-  try{
-    if(fsAnimAllowed(tileEl) && _fsFirstRect.width>20 && _fsFirstRect.height>20){
-      playFsClip(st, tileEl, fsClipFromRect(_fsFirstRect, tileEl.getBoundingClientRect()), FS_CLIP_FULL, null);
-    }
-  }catch(e){}
-  st.turnMiniEl.style.display='none'; // велика HUD-картка бере на себе цю роль у fullscreen
-  if(st.tripEtaEl) st.tripEtaEl.style.display='none'; // 05.09.2026: те саме — у fullscreen ця інформація не потрібна (там своя HUD-картка planRouteHud)
-  if(st.miniOffEl) st.miniOffEl.style.display='none'; // те саме для міні-бейджа відхилення
-  if(st.miniRerouteEl) st.miniRerouteEl.style.display='none'; // і для зеленої кнопки "Перебудувати" (25.08.2026)
   // 17.08.2026: planRouteHud ховається при виході з fullscreen (exitMapFullscreen)
   // — тут повертаємо її назад, якщо є побудований(і) маршрут(и), інакше
   // чіпи вибору альтернативних маршрутів були б недоступні до наступного
@@ -10882,7 +10687,6 @@ function exitMapFullscreen(st){
   _fsOpen=false; fsAwakeStop(); try{ pipUnfreeze(); }catch(e){} // 01.10.2026
   try{ document.getElementById('pipBtnTop').classList.remove('on'); }catch(e){} // 12.10.2026
   if(!_dashMask){ try{ startBootMask(); }catch(e){} } // 30.09.2026: якщо вихід не через анімовану гілку (там маска вже стартувала ДО анімації) — вмикаємо тут
-  if(st._fsAnim){ try{ st._fsAnim.cancel(); }catch(e){} st._fsAnim=null; } // 29.09.2026: прибрати анімацію, якщо вихід прийшов ззовні
   const tileEl=st.viewportEl.closest('.tile');
   if(tileEl) tileEl.classList.remove('map-fullscreen');
   // 21.08.2026: без цих двох викликів тайли поверталися до "природної"
@@ -10892,7 +10696,6 @@ function exitMapFullscreen(st){
   // (applyBottomRowAutoHeight) — вони так само лишались "короткими"
   // після виходу з fullscreen, доки щось ІНШЕ не викликало render().
   try{ applyBottomRowAutoHeight(); }catch(e){}
-  try{ applyManualLandscapeMapHeight(); }catch(e){}
   st.routeViewMode=false;
   try{ vtExit(st); }catch(e){}
   st.navFollowPaused=false; // повертаючись до маленької плитки після fullscreen — стартуємо заново з активним автоцентруванням
@@ -10936,8 +10739,6 @@ function exitMapFullscreen(st){
   // нижче — на маленькій плитці своя окрема мітка відхилення (miniOffEl,
   // рядок нижче), великий банер їй не потрібен.
   st.navOffEl.style.display='none';
-  if(navOffRoute && st.miniOffEl) st.miniOffEl.style.display='flex';
-  if(navOffRoute && st.miniRerouteEl) st.miniRerouteEl.style.display='flex'; // 25.08.2026: пара до miniOffEl — та сама умова
   st.navSoundBtnEl.style.display='none';
   st.navCenterBtnEl.style.display='none';
   st.navRouteBtnEl.style.display='none';
@@ -11818,15 +11619,7 @@ function showNavHud(st, show){ st.navHudEl.style.display = show?'flex':'none'; }
 // у маленькій плитці про відхилення не було видно взагалі.
 function showOffRouteIndicators(show){
   Object.values(mapInstances).forEach(st=>{
-    if(st.routeViewMode){
-      if(st.navOffEl) st.navOffEl.style.display = show?'flex':'none';
-    } else {
-      if(st.miniOffEl) st.miniOffEl.style.display = show?'flex':'none';
-      // 25.08.2026 (за проханням): "Перебудувати" з'являється РАЗОМ із
-      // бейджем "Відхилення" — не окремо (раніше було прив'язано до
-      // показника повороту, це було неправильне сполучення).
-      if(st.miniRerouteEl) st.miniRerouteEl.style.display = show?'flex':'none';
-    }
+    if(st.navOffEl) st.navOffEl.style.display = show?'flex':'none';
   });
 }
 function clearNavReroute(st){
@@ -12036,8 +11829,6 @@ function processNavHudStep(lat, lon){
     // не зупиняло озвучку/показник повороту — вони й далі говорили "поверніть",
     // хоча маршрут на екрані вже нема. Тепер приховане = повністю вимкнена
     // навігація: жодних оголошень, індикатори гасимо одразу.
-    updateMiniTurnIndicators(null, 0);
-    updateTripEtaBadge(null);
     updateRouteMiniBadge(null, null);
     return;
   }
@@ -12072,10 +11863,8 @@ function processNavHudStep(lat, lon){
       const remM = computeRemainingRouteDistanceM(navProgressIndex, snapLat, snapLon);
       const avgSpeedMs = activePlan.distanceM / activePlan.durationS;
       const remS = (remM!=null && avgSpeedMs>0) ? remM/avgSpeedMs : null;
-      updateTripEtaBadge(remS);
       updateRouteMiniBadge(remM, remS); // 26.09.2026: та сама "залишкова" арифметика — і для згорнутого віджета "Сховати" у fullscreen
     } else {
-      updateTripEtaBadge(null);
       updateRouteMiniBadge(null, null);
     }
   })();
@@ -12151,7 +11940,6 @@ function processRerouteGuidance(userCoords, lat, lon, distEl, pathEl){
     // Запит перерахунку ще "в польоті" — просто нічого не показуємо цей тік.
     if(distEl) setNavHudDistText(distEl, '---');
     if(pathEl) pathEl.setAttribute('d', NAV_ARROW_PATHS.STRAIGHT);
-    updateMiniTurnIndicators(null, 0);
     return;
   }
 
@@ -12188,7 +11976,6 @@ function processRerouteGuidance(userCoords, lat, lon, distEl, pathEl){
     const d=haversineM(snapLat,snapLon,last[0],last[1]);
     if(distEl) setNavHudDistText(distEl, d>999 ? (d/1000).toFixed(1)+' км' : Math.round(d)+' м');
     if(pathEl) pathEl.setAttribute('d', NAV_ARROW_PATHS.STRAIGHT);
-    updateMiniTurnIndicators({type:'STRAIGHT'}, d);
     if(!_rerouteStraightAnnounced){
       _rerouteStraightAnnounced=true;
       speak(`Прямуйте ${Math.round(d)} метрів, щоб повернутись на маршрут`);
@@ -12508,7 +12295,6 @@ function announceAndShowManeuver(nextManeuver, lat, lon, distEl, pathEl){
     jpUpdate(null);
     if(distEl) setNavHudDistText(distEl, '---');
     if(pathEl) pathEl.setAttribute('d', NAV_ARROW_PATHS.STRAIGHT);
-    updateMiniTurnIndicators(null, 0);
     updateNavHudLanes(null, 0, 0);
     _lastAnnouncedManeuverRef=null;
     return;
@@ -12554,7 +12340,6 @@ function announceAndShowManeuver(nextManeuver, lat, lon, distEl, pathEl){
     _realAfter._chainTried=true;
   }
   jpUpdate(nextManeuver, d, laneHolder, dLane); // 10.10.2026: «Огляд розвʼязки»
-  updateMiniTurnIndicators(nextManeuver, d);
 }
 
 // Міні-індикатор повороту на ЗВИЧАЙНИХ (не fullscreen) плитках карти —
@@ -12582,28 +12367,6 @@ function computeRemainingRouteDistanceM(fromIndex, curLat, curLon){
   }
   return total;
 }
-function updateTripEtaBadge(remainingS){
-  Object.values(mapInstances).forEach(function(st){
-    if(!st.tripEtaEl || st.routeViewMode) return;
-    if(remainingS==null){ st.tripEtaEl.style.display='none'; return; }
-    st.tripEtaEl.style.display='block';
-    const totalMin=Math.max(0, Math.round(remainingS/60));
-    const h=Math.floor(totalMin/60), m=totalMin%60;
-    st.tripEtaEl.textContent = h>0 ? (h+'ГОД '+m+'ХВ') : (m+'ХВ');
-  });
-}
-function updateMiniTurnIndicators(nextManeuver, distMeters){
-  Object.values(mapInstances).forEach(st=>{
-    if(!st.turnMiniEl || st.routeViewMode) return;
-    if(!nextManeuver){ st.turnMiniEl.style.display='none'; return; }
-    st.turnMiniEl.style.display='flex';
-    const pathEl=document.getElementById('turnMiniArrowPath_'+st.tileId);
-    const distEl=document.getElementById('turnMiniDist_'+st.tileId);
-    if(pathEl) pathEl.setAttribute('d', navArrowPath(nextManeuver.type));
-    if(distEl) setNavHudDistText(distEl, distMeters>999 ? (distMeters/1000).toFixed(1)+' км' : Math.round(distMeters)+' м');
-  });
-}
-
 // ── GOOGLE DIRECTIONS API КЛЮЧ ── Єдина точка істини (як і просив
 // користувач) — ключ ніколи не "зашитий" у код, живе лише в localStorage
 // через штатні ls()/lg() цього застосунку. Поле для нього — Налаштування
@@ -18943,12 +18706,9 @@ async function toggleRouteBtn(){
     _rerouteStraightAnnounced=false;
     Object.values(mapInstances).forEach(st=>{
       if(st.navOffEl) st.navOffEl.style.display='none';
-      if(st.miniOffEl) st.miniOffEl.style.display='none';
-      if(st.miniRerouteEl) st.miniRerouteEl.style.display='none';
       clearNavReroute(st);
       clearPlanAltLines(st); // 26.09.2026: разом з активною лінією ховаємо й сірі альтернативи — інакше лишались "привидом" на карті
     });
-    updateMiniTurnIndicators(null, 0);
     // 26.09.2026: разом з лінією ховаємо і саму картку-меню вибору
     // маршруту знизу (planRouteHud) — так само безумовно, як це вже
     // робить exitMapFullscreen. Скидаємо й "згорнутий" стан (planHudCollapsed)
@@ -20177,10 +19937,6 @@ async function clearMapRoute(){
     if(st.routeLine){ st.map.removeLayer(st.routeLine); st.routeLine=null; }
     if(st.navHudActive){ st.navHudActive=false; showNavHud(st,false); st.navOffEl.style.display='none'; }
     clearNavReroute(st);
-    if(st.turnMiniEl) st.turnMiniEl.style.display='none';
-    if(st.miniOffEl) st.miniOffEl.style.display='none';
-    if(st.miniRerouteEl) st.miniRerouteEl.style.display='none';
-    if(st.tripEtaEl) st.tripEtaEl.style.display='none';
   });
   updateRouteBtnUI();
   bmain(); sht('Маршрут прибрано');
@@ -21491,7 +21247,7 @@ function cpk(){
     if(ptile.k==='QuadTile'||ptile.k==='WeatherTile'){ q4Fields(pb); } else {
     const g=document.createElement('div');g.className='gt';g.textContent='Параметр';pb.appendChild(g);
     const pl=document.createElement('div');pl.className='pl';
-    Object.keys(P).forEach(k=>{
+    Object.keys(P).filter(function(k){ return k!=='MapTile'; }).forEach(k=>{
       const item=document.createElement('div');item.className='pi'+(ptile.k===k?' sel':'');
       item.innerHTML=`<div class="pn2">${P[k].n}<span class="pc">${P[k].u}</span></div><div class="ck">✓</div>`;
       item.addEventListener('click',()=>{selp(k);});pl.appendChild(item);
@@ -21760,7 +21516,6 @@ document.addEventListener('visibilitychange', function(){
 // вже усілось. Дешево (одна зайва функція раз при старті) і надійно.
 setTimeout(function(){
   try{ applyBottomRowAutoHeight(); }catch(e){}
-  try{ applyManualLandscapeMapHeight(); }catch(e){}
   try{ applyAudioCalibration(); }catch(e){}
 }, 400);
 // Первинна м'яка ініціалізація потоку
