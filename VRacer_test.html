@@ -83,7 +83,7 @@ body.rain-mode-active .tb button:not(#cb):not(#wsBtnTop):not(#pipBtnTop):not(#ra
    Довгий тап (відкриття переліку треків) під час дощу свідомо
    вимикається окремо в JS (mkAudioTile) — випадковий довгий дотик краплею
    не мав би розгортати на весь екран список треків посеред їзди. */
-body.rain-mode-active .audio-tile-inner{position:relative; z-index:99999;}
+body.rain-mode-active.music-live .audio-tile-inner{position:relative; z-index:99999;}
 /* 18.10.2026: ПЛЕЄР НА ВЕЛИКІЙ КАРТІ. Плитка «Музика» з приладової панелі в дощі піднімалась над картою й лягала на швидкість/кнопки (скриншот 17.10).
    Тепер, поки відкрита велика карта, ця плитка під картою лишається під картою (z-index:auto), а керування музикою — окремий плаваючий мініплеєр #mapPlayer
    (три кнопки, без назви й шкали, фон як у кнопок карти). Він видимий, коли музика грає (+20 с після паузи) або активний дощ; перетягується, як 📷-кнопка;
@@ -92,7 +92,7 @@ body.rain-mode-active:has(.tile.map-fullscreen) .audio-tile-inner{z-index:auto;}
 #mapPlayer{position:fixed; z-index:5150; display:none; align-items:center; gap:18px; touch-action:none;
   -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;}
 #mapPlayer.show{display:flex;}
-body.rain-mode-active #mapPlayer{z-index:99999;}
+body.rain-mode-active.music-live #mapPlayer{z-index:99999;}
 /* кнопки — ті самі .at-btn / .at-play, що й у плитці «Музика» (скляний квадрат, бірюзовий плей); розмір задає font-size */
 #mapPlayer .at-btn{font-size:1.9rem;}
 #mapPlayer .at-btn.at-play{font-size:2.05rem;}
@@ -1229,7 +1229,7 @@ body.hide-cam-radar .cam-radar-badge{display:none !important;}
 
 <div class="mb" id="em">
   <div class="ms">
-    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 21.11.2026 19:05)</span></h3><button class="mc2" id="emc">✕</button></div>
+    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 21.11.2026 19:40)</span></h3><button class="mc2" id="emc">✕</button></div>
     <div class="tbar">
       <div class="tab a" id="t0" onclick="st(0)">ЕКРАН</div>
       <div class="tab" id="t1" onclick="st(1)">СИГНАЛИ</div>
@@ -2557,7 +2557,10 @@ function updateMapPlayerUI(){
   const now=Date.now(); if(playing) _mpLastPlay=now;
   const fs=!!document.querySelector('.tile.map-fullscreen');
   const rain=document.body.classList.contains('rain-mode-active');
-  const want=fs && n>0 && (rain || playing || (now-_mpLastPlay<20000));
+  const notif=!!(alrtSnd || (window._notifUntil||0)>now);
+  const live=playing || (now-_mpLastPlay<20000) || notif; // 21.11.2026: у дощі плеєр активний лише коли грає музика / є сповіщення
+  try{ document.body.classList.toggle('music-live', live); }catch(e){}
+  const want=fs && n>0 && live;
   if(want!==el.classList.contains('show')){ el.classList.toggle('show', want); if(want) applyMapPlayerPos(); }
   const key=(playing?'p':'s')+(n<2?'1':'2');
   if(key!==_mpKey){
@@ -2794,7 +2797,7 @@ async function beepAlert(){
     });
   }catch(e){}
 }
-function startAlert(){if(alrtSnd)return;alrtSnd=true;beepAlert();alrtInt=setInterval(beepAlert,1000);}
+function startAlert(){window._notifUntil=Date.now()+10000;if(alrtSnd)return;alrtSnd=true;beepAlert();alrtInt=setInterval(beepAlert,1000);}
 function stopAlert(){if(!alrtSnd)return;alrtSnd=false;clearInterval(alrtInt);alrtInt=null;}
 
 let spdBeepDone=false;
@@ -4512,6 +4515,7 @@ function _spPlay(it){
   }catch(e){ console.warn('[nav] speechSynthesis помилка:', e); _spBusy=false; }
 }
 function speak(text, opts){
+  window._notifUntil=Date.now()+10000; // 21.11.2026: сповіщення → у дощі плеєр на мить активний
   if(AL.Sound_enabled===false) return;
   if(!('speechSynthesis' in window)) return;
   const o=opts||{}, phase=o.phase||'info', key=o.key||null;
@@ -20883,10 +20887,11 @@ async function togglePipMode(){
     }
 
     dashTile.classList.add('pip-active');
-    await new Promise(r=>requestAnimationFrame(r));
+    // 21.11.2026: у фоні (автоPiP з visibilitychange) rAF не спрацьовує → PiP ніколи не вмикався, особливо коли відео було заморожене під великою картою
+    if(!document.hidden) await new Promise(r=>requestAnimationFrame(r));
     drawPipFrame();
 
-    await pipVideo.play(); // Робимо відео активним перед викликом режиму
+    try{ await pipVideo.play(); }catch(pe){ console.warn('pip play:',pe&&pe.message); } // Робимо відео активним перед викликом режиму; відмова play() не скасовує спробу PiP
 
     if (pipVideo.webkitSetPresentationMode) {
       // Обхід блокування Safari (iOS)
@@ -20984,7 +20989,11 @@ document.addEventListener('visibilitychange', ()=>{
   if(document.hidden && bConn && !editMode){
     const dashTile = document.getElementById('dash-video-tile');
     const alreadyInPip = !!(dashTile && dashTile.classList.contains('pip-active'));
-    if(!alreadyInPip) togglePipMode();
+    if(!alreadyInPip){
+      togglePipMode();
+      // 21.11.2026: повторна спроба, якщо PiP так і не ввімкнувся (відео було заморожене під картою)
+      setTimeout(function(){ if(document.hidden && bConn && !pipIsReallyInPip()){ _pipNoFreezeUntil=Date.now()+5000; pipUnfreeze(); try{ togglePipMode(); }catch(e){} } }, 700);
+    }
   }
 });
 
