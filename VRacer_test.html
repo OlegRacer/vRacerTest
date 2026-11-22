@@ -1229,7 +1229,7 @@ body.hide-cam-radar .cam-radar-badge{display:none !important;}
 
 <div class="mb" id="em">
   <div class="ms">
-    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 22.11.2026 13:40)</span></h3><button class="mc2" id="emc">✕</button></div>
+    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 22.11.2026 13:55)</span></h3><button class="mc2" id="emc">✕</button></div>
     <div class="tbar">
       <div class="tab a" id="t0" onclick="st(0)">ЕКРАН</div>
       <div class="tab" id="t1" onclick="st(1)">СИГНАЛИ</div>
@@ -6260,7 +6260,7 @@ function spdCalib(){
 function spdPick(gpsKmhNow){
   const now=Date.now(), ecuOk=SPD.raw!=null && now-SPD.rawTs<2000 && spdCalibrated();
   const gpsOk=SPD.gpsTs && now-SPD.gpsTs<4000;
-  if(SPD.mode==='raw' && SPD.raw!=null && now-SPD.rawTs<2000) return {kmh:SPD.raw,src:'raw'};   // 22.11.2026: сирий байт без корекції
+  if(SPD.mode==='raw') return {kmh:(SPD.raw!=null && now-SPD.rawTs<2000)?SPD.raw:0,src:'raw'};   // RAW строгий: без свіжих пакетів 19 Б — 0, а не GPS   // 22.11.2026: сирий байт без корекції
   if(SPD.mode==='ecu' && ecuOk) return {kmh:spdEcuKmh(),src:'ecu'};
   if(gpsOk) return {kmh:(gpsKmhNow!=null?gpsKmhNow:Math.round(SPD.gpsKmh||0)),src:'gps'};
   if(ecuOk) return {kmh:spdEcuKmh(),src:'ecu'};
@@ -6272,7 +6272,7 @@ function spdApply(fromGps,gpsKmhNow){
   if(SPD.src!==r.src){ SPD.src=r.src; try{ spdLabelUpdate(); }catch(e){} }
   if(r.src==='ecu' || r.src==='raw' || fromGps){ V.GPS=r.kmh; try{ applySpeedZoom(V.GPS); }catch(e){} }
 }
-setInterval(function(){ try{ if(SPD.mode==='auto' && SPD.gpsTs && Date.now()-SPD.gpsTs>=4000 && SPD.raw!=null) spdApply(false); }catch(e){} },2000);
+setInterval(function(){ try{ if(SPD.mode==='raw') spdApply(false); if(SPD.mode==='auto' && SPD.gpsTs && Date.now()-SPD.gpsTs>=4000 && SPD.raw!=null) spdApply(false); }catch(e){} },2000);
 // 22.11.2026: підпис плитки/відео залежить від джерела швидкості: GPS / ECU (з корекцією) / RAW (сирий байт ×1)
 function spdLabel(){ return SPD.src==='raw'?'RAW':(SPD.src==='ecu'?'ECU':'GPS'); }
 function spdLabelUpdate(){ const l=spdLabel(); document.querySelectorAll('.tv[data-lid="GPS"]').forEach(function(v){ const t=v.parentNode&&v.parentNode.querySelector('.tl'); if(t) t.textContent=l; }); }
