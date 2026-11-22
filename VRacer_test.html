@@ -1229,7 +1229,7 @@ body.hide-cam-radar .cam-radar-badge{display:none !important;}
 
 <div class="mb" id="em">
   <div class="ms">
-    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 21.11.2026 22:50)</span></h3><button class="mc2" id="emc">✕</button></div>
+    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 22.11.2026 13:10)</span></h3><button class="mc2" id="emc">✕</button></div>
     <div class="tbar">
       <div class="tab a" id="t0" onclick="st(0)">ЕКРАН</div>
       <div class="tab" id="t1" onclick="st(1)">СИГНАЛИ</div>
@@ -4931,7 +4931,7 @@ function tripPushPoint(){
   tripLog.push({
     t: Date.now(),
     lat: _lastLat, lon: _lastLon, alt: _lastAlt, spd: _lastSpeedMps,
-    ecuRaw: (typeof SPD!=='undefined'?SPD.raw:null), spdK: (typeof SPD!=='undefined'?SPD.k:null), spdShown: V.GPS, spdSrc: (typeof SPD!=='undefined'?SPD.src:''), // 21.11.2026: для аналізу коефіцієнта k
+    ecuRaw: (typeof SPD!=='undefined'?SPD.raw:null), spdK: (typeof SPD!=='undefined'?SPD.k:null), spdShown: V.GPS, spdSrc: (typeof SPD!=='undefined'?SPD.src:''), h19: LASTPK.h19, h20: LASTPK.h20, // 21.11.2026: для аналізу коефіцієнта k
     // V.Volt, V.Gforce і V.Inj_Rate на живому дашборді — РЯДКИ (formatted через
     // .toFixed() для гарного відображення на тайлі), а не числа, як решта полів.
     // tripNumOrEmpty() очікує typeof==='number', тож ці поля мовчки писались
@@ -4991,7 +4991,7 @@ async function tripExportGPX(log){
       `rpm="${tripNumOrEmpty(p.rpm)}" tps="${tripNumOrEmpty(p.tps)}" volt="${tripNumOrEmpty(p.volt)}" `+
       `tEng="${tripNumOrEmpty(p.tEng)}" tAir="${tripNumOrEmpty(p.tAir)}" map="${tripNumOrEmpty(p.map)}" `+
       `inj="${tripNumOrEmpty(p.inj)}" lean="${tripNumOrEmpty(p.lean)}" g="${tripNumOrEmpty(p.g)}" `+
-      `fall="${p.fall||''}" spdMps="${spdAttr}" ecuRaw="${tripNumOrEmpty(p.ecuRaw)}" spdK="${p.spdK!=null?(+p.spdK).toFixed(4):''}" spdShown="${tripNumOrEmpty(+p.spdShown)}" spdSrc="${p.spdSrc||''}"/></extensions></trkpt>`;
+      `fall="${p.fall||''}" spdMps="${spdAttr}" ecuRaw="${tripNumOrEmpty(p.ecuRaw)}" spdK="${p.spdK!=null?(+p.spdK).toFixed(4):''}" spdShown="${tripNumOrEmpty(+p.spdShown)}" spdSrc="${p.spdSrc||''}" p19="${p.h19||''}" p20="${p.h20||''}"/></extensions></trkpt>`;
   }).filter(Boolean).join('\n');
 
   const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n`+
@@ -6230,9 +6230,11 @@ async function initSession(){
    Байт [16] знайдено «Діагностикою» (збігається зі швидкістю). Сирий байт × коефіцієнт k = км/год; k підганяється під GPS на ходу (метод найменших квадратів
    через нуль, лише коли GPS точний ≤20 м і швидкість ≥8 км/год, 12 вибірок → плавне оновлення), зберігається. Режим «Авто»: показуємо GPS, а коли GPS зник/застарів
    (тунель, слабкий сигнал) — швидкість із ECU; режим «ECU»: завжди ECU, коли відкалібрований (швидший відгук), GPS лише калібрує. */
-const SPD={raw:null,rawTs:0,gpsKmh:null,gpsTs:0,gpsAcc:null,k:+lg('spd_k')||1,n:+lg('spd_n')||0,mode:lg('spd_mode')||'auto',len:+lg('spd_len')||20,idx:(lg('spd_idx')!=null?+lg('spd_idx'):16),buf:[],win:[],src:'gps',rawMax:0};
+const SPD={raw:null,rawTs:0,gpsKmh:null,gpsTs:0,gpsAcc:null,k:+lg('spd_k')||1,n:+lg('spd_n')||0,mode:lg('spd_mode')||'auto',len:(lg('spd_len_v2')?(+lg('spd_len')||19):19),idx:(lg('spd_idx')!=null?+lg('spd_idx'):16),buf:[],win:[],src:'gps',rawMax:0};
 function spdCalibrated(){ return SPD.n>=20; }
 function spdEcuKmh(){ return SPD.raw==null?null:Math.round(SPD.raw*SPD.k); }
+// 22.11.2026: одноразово скидаємо k, набраний на хибному байті (20-байтний потік)
+try{ if(!lg('spd_len_v2')){ SPD.k=1; SPD.n=0; ls('spd_k',1); ls('spd_n',0); ls('spd_len_v2',1); ls('spd_len',19); } }catch(e){}
 function spdFromRaw(r){ const t=Date.now(); SPD.raw=r; SPD.rawTs=t; if(r>SPD.rawMax) SPD.rawMax=r; SPD.win.push([t,r]); while(SPD.win.length && t-SPD.win[0][0]>1500) SPD.win.shift(); spdApply(false); }
 function spdFromGps(kmh,acc){ SPD.gpsKmh=(kmh==null?null:kmh); SPD.gpsTs=Date.now(); SPD.gpsAcc=acc; spdCalib(); }
 function spdCalib(){
@@ -6272,7 +6274,7 @@ function spdApply(fromGps,gpsKmhNow){
 setInterval(function(){ try{ if(SPD.mode==='auto' && SPD.gpsTs && Date.now()-SPD.gpsTs>=4000 && SPD.raw!=null) spdApply(false); }catch(e){} },2000);
 function spdSetMode(m){ SPD.mode=m; try{ ls('spd_mode',m); }catch(e){} spdRefresh(); }
 function spdReset(){ SPD.k=1; SPD.n=0; SPD.buf=[]; try{ ls('spd_k',1); ls('spd_n',0); }catch(e){} spdRefresh(); }
-function spdSetLen(l){ SPD.len=l; try{ ls('spd_len',l); }catch(e){} spdRefresh(); }
+function spdSetLen(l){ SPD.len=l; try{ ls('spd_len',l); ls('spd_len_v2',1); }catch(e){} spdRefresh(); }
 function spdRefresh(){
   const o=document.getElementById('spdOut'); if(!o){ if(SPD.iv){ clearInterval(SPD.iv); SPD.iv=null; } return; }
   const now=Date.now(), age=SPD.rawTs?Math.round((now-SPD.rawTs)/100)/10:null;
@@ -6367,9 +6369,12 @@ function drHtml(){
    +'<div style="display:flex;gap:6px;padding:0 0 6px;"><button type="button" class="ab" style="'+bs+'" onclick="drSetGap(5)">5 с</button><button type="button" class="ab" style="'+bs+'" onclick="drSetGap(10)">10 с</button><button type="button" class="ab" style="'+bs+'" onclick="drSetGap(20)">20 с</button><button type="button" class="ab" style="'+bs+'" onclick="drSetGap(30)">30 с</button><button type="button" class="ab" style="'+bs+'" onclick="drResetStats()">Скинути</button></div>'
    +'<pre id="drOut" style="white-space:pre-wrap;font-size:11px;line-height:1.45;margin:4px 0 0;padding:8px;background:#111;border-radius:8px;color:#ddd;"></pre>';
 }
+function _hex(p){ let h=''; for(let i=0;i<p.length;i++) h+=(p[i]<16?'0':'')+p[i].toString(16); return h; }
+var LASTPK={h19:'',h20:''}; // 21.11.2026: останні пакети цілком — у GPX, щоб знайти байт швидкості офлайн
 function parse20Byte(pkt){
   if(pkt.length !== 20) return false;
   if(pkt[0] === 0xfc) return false;
+  LASTPK.h20=_hex(pkt);
   if(SPD.len===20 && pkt.length>SPD.idx){ try{ spdFromRaw(pkt[SPD.idx]); }catch(e){} }   // 21.11.2026: швидкість ECU
   const teng = pkt[6] - 28;
   const rpm  = (pkt[2]<<8)|pkt[3];
@@ -6432,6 +6437,7 @@ function parse20Byte(pkt){
 // або спростовані, або занадто шумні.
 function parse19Byte(pkt){
   if(pkt.length !== 19) return false;
+  LASTPK.h19=_hex(pkt);
   if(SPD.len===19 && pkt.length>SPD.idx){ try{ spdFromRaw(pkt[SPD.idx]); }catch(e){} }   // 21.11.2026: швидкість ECU
   const injRaw = pkt[7];
   if(injRaw >= 0 && injRaw <= 255){
