@@ -1229,7 +1229,7 @@ body.hide-cam-radar .cam-radar-badge{display:none !important;}
 
 <div class="mb" id="em">
   <div class="ms">
-    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 22.11.2026 13:10)</span></h3><button class="mc2" id="emc">✕</button></div>
+    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 22.11.2026 13:40)</span></h3><button class="mc2" id="emc">✕</button></div>
     <div class="tbar">
       <div class="tab a" id="t0" onclick="st(0)">ЕКРАН</div>
       <div class="tab" id="t1" onclick="st(1)">СИГНАЛИ</div>
@@ -6260,6 +6260,7 @@ function spdCalib(){
 function spdPick(gpsKmhNow){
   const now=Date.now(), ecuOk=SPD.raw!=null && now-SPD.rawTs<2000 && spdCalibrated();
   const gpsOk=SPD.gpsTs && now-SPD.gpsTs<4000;
+  if(SPD.mode==='raw' && SPD.raw!=null && now-SPD.rawTs<2000) return {kmh:SPD.raw,src:'raw'};   // 22.11.2026: сирий байт без корекції
   if(SPD.mode==='ecu' && ecuOk) return {kmh:spdEcuKmh(),src:'ecu'};
   if(gpsOk) return {kmh:(gpsKmhNow!=null?gpsKmhNow:Math.round(SPD.gpsKmh||0)),src:'gps'};
   if(ecuOk) return {kmh:spdEcuKmh(),src:'ecu'};
@@ -6268,10 +6269,13 @@ function spdPick(gpsKmhNow){
 function spdApply(fromGps,gpsKmhNow){
   if(window._simRun) return;
   const r=spdPick(gpsKmhNow); if(!r) return;
-  SPD.src=r.src;
-  if(r.src==='ecu' || fromGps){ V.GPS=r.kmh; try{ applySpeedZoom(V.GPS); }catch(e){} }
+  if(SPD.src!==r.src){ SPD.src=r.src; try{ spdLabelUpdate(); }catch(e){} }
+  if(r.src==='ecu' || r.src==='raw' || fromGps){ V.GPS=r.kmh; try{ applySpeedZoom(V.GPS); }catch(e){} }
 }
 setInterval(function(){ try{ if(SPD.mode==='auto' && SPD.gpsTs && Date.now()-SPD.gpsTs>=4000 && SPD.raw!=null) spdApply(false); }catch(e){} },2000);
+// 22.11.2026: підпис плитки/відео залежить від джерела швидкості: GPS / ECU (з корекцією) / RAW (сирий байт ×1)
+function spdLabel(){ return SPD.src==='raw'?'RAW':(SPD.src==='ecu'?'ECU':'GPS'); }
+function spdLabelUpdate(){ const l=spdLabel(); document.querySelectorAll('.tv[data-lid="GPS"]').forEach(function(v){ const t=v.parentNode&&v.parentNode.querySelector('.tl'); if(t) t.textContent=l; }); }
 function spdSetMode(m){ SPD.mode=m; try{ ls('spd_mode',m); }catch(e){} spdRefresh(); }
 function spdReset(){ SPD.k=1; SPD.n=0; SPD.buf=[]; try{ ls('spd_k',1); ls('spd_n',0); }catch(e){} spdRefresh(); }
 function spdSetLen(l){ SPD.len=l; try{ ls('spd_len',l); ls('spd_len_v2',1); }catch(e){} spdRefresh(); }
@@ -6282,7 +6286,7 @@ function spdRefresh(){
    +'\nECU км/год = байт × k = '+(SPD.raw==null?'—':spdEcuKmh())
    +'\nGPS км/год: '+(SPD.gpsKmh==null?'—':Math.round(SPD.gpsKmh))+(SPD.gpsAcc!=null?' (±'+Math.round(SPD.gpsAcc)+' м)':'')
    +'\nКоефіцієнт k = '+SPD.k.toFixed(3)+' · вибірок '+SPD.n+(spdCalibrated()?' ✓ відкалібровано':' (потрібно ≥20: їдьте >8 км/год з GPS)')
-   +'\nРежим: '+(SPD.mode==='ecu'?'ECU (GPS лише калібрує)':'Авто (GPS, при втраті — ECU)')+' · зараз джерело: '+SPD.src.toUpperCase();
+   +'\nРежим: '+(SPD.mode==='raw'?'RAW (сирий байт ×1, без корекції)':SPD.mode==='ecu'?'ECU (GPS лише калібрує)':'Авто (GPS, при втраті — ECU)')+' · зараз джерело: '+SPD.src.toUpperCase();
 }
 function spdHtml(){
   const bs='flex:1;margin:0;background:#222;color:#fff;';
@@ -6290,7 +6294,7 @@ function spdHtml(){
   setTimeout(spdRefresh,50);
   return '<div style="font-size:12px;font-weight:700;color:#ffb300;padding-top:16px;">🛵 ШВИДКІСТЬ З ECU (КОРЕКЦІЯ ПО GPS)</div>'
    +'<div style="font-size:12px;color:var(--muted);padding:2px 5px 8px;line-height:1.5;">Байт швидкості з Діагностики. Їдьте з GPS кілька хвилин — коефіцієнт підженеться сам. Далі швидкість не залежить від GPS.</div>'
-   +'<div style="display:flex;gap:6px;padding:0 0 6px;"><button type="button" class="ab" style="'+bs+'" onclick="spdSetMode(\'auto\')">Авто</button><button type="button" class="ab" style="'+bs+'" onclick="spdSetMode(\'ecu\')">ECU</button><button type="button" class="ab" style="'+bs+'" onclick="spdReset()">Скинути k</button></div>'
+   +'<div style="display:flex;gap:6px;padding:0 0 6px;"><button type="button" class="ab" style="'+bs+'" onclick="spdSetMode(\'auto\')">Авто</button><button type="button" class="ab" style="'+bs+'" onclick="spdSetMode(\'ecu\')">ECU</button><button type="button" class="ab" style="'+bs+'" onclick="spdSetMode(\'raw\')">RAW</button><button type="button" class="ab" style="'+bs+'" onclick="spdReset()">Скинути k</button></div>'
    +'<div style="display:flex;gap:6px;padding:0 0 6px;"><button type="button" class="ab" style="'+bs+'" onclick="spdSetLen(20)">Пакет 20 Б</button><button type="button" class="ab" style="'+bs+'" onclick="spdSetLen(19)">Пакет 19 Б</button></div>'
    +'<pre id="spdOut" style="white-space:pre-wrap;font-size:11px;line-height:1.45;margin:4px 0 0;padding:8px;background:#111;border-radius:8px;color:#ddd;"></pre>';
 }
@@ -7396,7 +7400,7 @@ function mkTile(tile){
 function mkF(tile,p){
   const w=document.createElement('div');
   w.style.cssText='display:flex;flex-direction:column;align-items:center;width:100%;';
-  const l=document.createElement('div');l.className='tl';l.textContent=p.n;
+  const l=document.createElement('div');l.className='tl';l.textContent=(tile.k==='GPS'?spdLabel():p.n);
   const u=document.createElement('div');u.className='tun';
   const v=document.createElement('div');v.className='tv';v.dataset.lid=tile.k;v.textContent=_dashMask?'--':V[tile.k];
   w.append(l,u,v);
@@ -7410,7 +7414,7 @@ function mkG(tile,p){
     <path class="gfg" id="gfg_${tile.id}" d="M 20 80 A 40 40 0 1 1 80 80" stroke-dasharray="188.4" stroke-dashoffset="188.4"/>
   </svg>`;
   const gc=document.createElement('div');gc.className='gc';
-  const l=document.createElement('div');l.className='tl';l.textContent=p.n;
+  const l=document.createElement('div');l.className='tl';l.textContent=(tile.k==='GPS'?spdLabel():p.n);
   const v=document.createElement('div');v.className='tv';v.dataset.lid=tile.k;v.textContent=_dashMask?'--':V[tile.k];
   gc.append(l,v);
   w.appendChild(gc);
@@ -20763,7 +20767,7 @@ function drawPipFrame(){
   const isPip = !!(dashTileEl && dashTileEl.classList.contains('pip-active'));
 
   drawTileLikeColumn(cardW/2, cardW, H, 'T_ENG', '#3b82f6', temp, tEngState, isPip);
-  drawTileLikeColumn(cardW + gap + cardW/2, cardW, H, 'GPS', '#37e0e6', speed, gpsState, isPip);
+  drawTileLikeColumn(cardW + gap + cardW/2, cardW, H, spdLabel(), '#37e0e6', speed, gpsState, isPip);
   drawCamRadarBadge(cardW+gap, cardW, H);
 }
 
