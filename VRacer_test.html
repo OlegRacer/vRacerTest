@@ -1229,7 +1229,7 @@ body.hide-cam-radar .cam-radar-badge{display:none !important;}
 
 <div class="mb" id="em">
   <div class="ms">
-    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 22.11.2026 13:55)</span></h3><button class="mc2" id="emc">✕</button></div>
+    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 22.11.2026 18:20)</span></h3><button class="mc2" id="emc">✕</button></div>
     <div class="tbar">
       <div class="tab a" id="t0" onclick="st(0)">ЕКРАН</div>
       <div class="tab" id="t1" onclick="st(1)">СИГНАЛИ</div>
@@ -6230,12 +6230,13 @@ async function initSession(){
    Байт [16] знайдено «Діагностикою» (збігається зі швидкістю). Сирий байт × коефіцієнт k = км/год; k підганяється під GPS на ходу (метод найменших квадратів
    через нуль, лише коли GPS точний ≤20 м і швидкість ≥8 км/год, 12 вибірок → плавне оновлення), зберігається. Режим «Авто»: показуємо GPS, а коли GPS зник/застарів
    (тунель, слабкий сигнал) — швидкість із ECU; режим «ECU»: завжди ECU, коли відкалібрований (швидший відгук), GPS лише калібрує. */
+var PIP_FRAME_MS=1000; // 22.11.2026: період кадру відео = період оновлення швидкості SPEED/ECU (один параметр для обох)
 const SPD={raw:null,rawTs:0,gpsKmh:null,gpsTs:0,gpsAcc:null,k:+lg('spd_k')||1,n:+lg('spd_n')||0,mode:lg('spd_mode')||'auto',len:(lg('spd_len_v2')?(+lg('spd_len')||19):19),idx:(lg('spd_idx')!=null?+lg('spd_idx'):16),buf:[],win:[],src:'gps',rawMax:0};
 function spdCalibrated(){ return SPD.n>=20; }
 function spdEcuKmh(){ return SPD.raw==null?null:Math.round(SPD.raw*SPD.k); }
 // 22.11.2026: одноразово скидаємо k, набраний на хибному байті (20-байтний потік)
 try{ if(!lg('spd_len_v2')){ SPD.k=1; SPD.n=0; ls('spd_k',1); ls('spd_n',0); ls('spd_len_v2',1); ls('spd_len',19); } }catch(e){}
-function spdFromRaw(r){ const t=Date.now(); SPD.raw=r; SPD.rawTs=t; if(r>SPD.rawMax) SPD.rawMax=r; SPD.win.push([t,r]); while(SPD.win.length && t-SPD.win[0][0]>1500) SPD.win.shift(); spdApply(false); }
+function spdFromRaw(r){ const t=Date.now(); SPD.raw=r; SPD.rawTs=t; if(r>SPD.rawMax) SPD.rawMax=r; SPD.win.push([t,r]); while(SPD.win.length && t-SPD.win[0][0]>1500) SPD.win.shift(); if(SPD.mode!=='auto' && t-(SPD.lastApply||0)<PIP_FRAME_MS) return; SPD.lastApply=t; spdApply(false); }
 function spdFromGps(kmh,acc){ SPD.gpsKmh=(kmh==null?null:kmh); SPD.gpsTs=Date.now(); SPD.gpsAcc=acc; spdCalib(); }
 function spdCalib(){
   const now=Date.now();
@@ -6274,7 +6275,7 @@ function spdApply(fromGps,gpsKmhNow){
 }
 setInterval(function(){ try{ if(SPD.mode==='raw') spdApply(false); if(SPD.mode==='auto' && SPD.gpsTs && Date.now()-SPD.gpsTs>=4000 && SPD.raw!=null) spdApply(false); }catch(e){} },2000);
 // 22.11.2026: підпис плитки/відео залежить від джерела швидкості: GPS / ECU (з корекцією) / RAW (сирий байт ×1)
-function spdLabel(){ return SPD.src==='raw'?'RAW':(SPD.src==='ecu'?'ECU':'GPS'); }
+function spdLabel(){ return SPD.src==='raw'?'ECU':(SPD.src==='ecu'?'SPEED':'GPS'); }
 function spdLabelUpdate(){ const l=spdLabel(); document.querySelectorAll('.tv[data-lid="GPS"]').forEach(function(v){ const t=v.parentNode&&v.parentNode.querySelector('.tl'); if(t) t.textContent=l; }); }
 function spdSetMode(m){ SPD.mode=m; try{ ls('spd_mode',m); }catch(e){} spdRefresh(); }
 function spdReset(){ SPD.k=1; SPD.n=0; SPD.buf=[]; try{ ls('spd_k',1); ls('spd_n',0); }catch(e){} spdRefresh(); }
@@ -6286,16 +6287,15 @@ function spdRefresh(){
    +'\nECU км/год = байт × k = '+(SPD.raw==null?'—':spdEcuKmh())
    +'\nGPS км/год: '+(SPD.gpsKmh==null?'—':Math.round(SPD.gpsKmh))+(SPD.gpsAcc!=null?' (±'+Math.round(SPD.gpsAcc)+' м)':'')
    +'\nКоефіцієнт k = '+SPD.k.toFixed(3)+' · вибірок '+SPD.n+(spdCalibrated()?' ✓ відкалібровано':' (потрібно ≥20: їдьте >8 км/год з GPS)')
-   +'\nРежим: '+(SPD.mode==='raw'?'RAW (сирий байт ×1, без корекції)':SPD.mode==='ecu'?'ECU (GPS лише калібрує)':'Авто (GPS, при втраті — ECU)')+' · зараз джерело: '+SPD.src.toUpperCase();
+   +'\nРежим: '+(SPD.mode==='raw'?'ECU (сирий байт ×1, без корекції)':SPD.mode==='ecu'?'SPEED (ECU з корекцією, GPS лише калібрує)':'Авто (GPS, при втраті — ECU)')+' · зараз джерело: '+spdLabel();
 }
 function spdHtml(){
   const bs='flex:1;margin:0;background:#222;color:#fff;';
   if(!SPD.iv) SPD.iv=setInterval(spdRefresh,1000);
   setTimeout(spdRefresh,50);
   return '<div style="font-size:12px;font-weight:700;color:#ffb300;padding-top:16px;">🛵 ШВИДКІСТЬ З ECU (КОРЕКЦІЯ ПО GPS)</div>'
-   +'<div style="font-size:12px;color:var(--muted);padding:2px 5px 8px;line-height:1.5;">Байт швидкості з Діагностики. Їдьте з GPS кілька хвилин — коефіцієнт підженеться сам. Далі швидкість не залежить від GPS.</div>'
-   +'<div style="display:flex;gap:6px;padding:0 0 6px;"><button type="button" class="ab" style="'+bs+'" onclick="spdSetMode(\'auto\')">Авто</button><button type="button" class="ab" style="'+bs+'" onclick="spdSetMode(\'ecu\')">ECU</button><button type="button" class="ab" style="'+bs+'" onclick="spdSetMode(\'raw\')">RAW</button><button type="button" class="ab" style="'+bs+'" onclick="spdReset()">Скинути k</button></div>'
-   +'<div style="display:flex;gap:6px;padding:0 0 6px;"><button type="button" class="ab" style="'+bs+'" onclick="spdSetLen(20)">Пакет 20 Б</button><button type="button" class="ab" style="'+bs+'" onclick="spdSetLen(19)">Пакет 19 Б</button></div>'
+   +'<div style="font-size:12px;color:var(--muted);padding:2px 5px 8px;line-height:1.5;">Авто — GPS (при втраті ECU). SPEED — ECU з корекцією, ECU — сирий байт. Швидкість у SPEED/ECU оновлюється з частотою кадрів відео. Байт швидкості з Діагностики. Їдьте з GPS кілька хвилин — коефіцієнт підженеться сам. Далі швидкість не залежить від GPS.</div>'
+   +'<div style="display:flex;gap:6px;padding:0 0 6px;"><button type="button" class="ab" style="'+bs+'" onclick="spdSetMode(\'auto\')">Авто</button><button type="button" class="ab" style="'+bs+'" onclick="spdSetMode(\'ecu\')">SPEED</button><button type="button" class="ab" style="'+bs+'" onclick="spdSetMode(\'raw\')">ECU</button><button type="button" class="ab" style="'+bs+'" onclick="spdReset()">Скинути k</button></div>'
    +'<pre id="spdOut" style="white-space:pre-wrap;font-size:11px;line-height:1.45;margin:4px 0 0;padding:8px;background:#111;border-radius:8px;color:#ddd;"></pre>';
 }
 // ===== 21.11.2026: ІНЕРЦІАЛЬНИЙ РЕЖИМ (DR) — позиція між рідкими GPS-фіксами =====
@@ -20511,7 +20511,6 @@ function renderTestSettingsTab(body){
     +'<button type="button" class="ab" style="flex:1;margin:0;background:#222;color:#fff;" onclick="trafficProbeCopy()">📋 Копіювати результат</button></div>'
     +'<div style="padding:0 0 6px;"><button type="button" class="ab" id="trfCalBtn" style="margin:0;background:#222;color:#fff;" onclick="trafficCalib()">🎯 Калібрування рівнів: рівні, швидкості й ділянки біля мене</button></div>'
     +'<pre id="trfOut" style="display:'+(_trfTxt?'block':'none')+';white-space:pre-wrap;word-break:break-all;font-size:10px;line-height:1.35;margin:4px 0 0;padding:8px;background:#111;border-radius:8px;color:#cde;">'+String(_trfTxt||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</pre>'
-    +spdHtml()
     +drHtml()
     +measHtml()
     +pmonHtml()
@@ -20777,7 +20776,7 @@ function drawPipFrame(){
 let _pipWorker=null;
 function startPipWorkerTimer(){
   if(_pipWorker)return;
-  const workerCode=`setInterval(()=>postMessage(1),1000);`;
+  const workerCode=`setInterval(()=>postMessage(1),${PIP_FRAME_MS});`;
   const blob=new Blob([workerCode],{type:'application/javascript'});
   _pipWorker=new Worker(URL.createObjectURL(blob));
   _pipWorker.onmessage=()=>drawPipFrame();
@@ -21225,6 +21224,7 @@ function bmain(){
       <div style="display:flex;align-items:center;gap:10px;padding:5px;">
         <label><input type="checkbox" id="ai_snd_cam" ${AL.Sound_cam_enabled!==false?'checked':''}> Радар камер (перевищення ліміту)</label>
       </div>
+      ${spdHtml()}
       <div class="gt">Температура мотора (°C)</div>
       <div class="triple-row" style="display:flex;gap:5px;padding:3px 5px;">
         <input type="number" id="ai_tc" class="sb" style="background:#111;color:#fff;border:1px solid var(--line);" value="${AL.T_cold}" placeholder="Cold">
