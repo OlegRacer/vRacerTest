@@ -1229,7 +1229,7 @@ body.hide-cam-radar .cam-radar-badge{display:none !important;}
 
 <div class="mb" id="em">
   <div class="ms">
-    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 22.11.2026 19:50)</span></h3><button class="mc2" id="emc">✕</button></div>
+    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 24.11.2026 14:40)</span></h3><button class="mc2" id="emc">✕</button></div>
     <div class="tbar">
       <div class="tab a" id="t0" onclick="st(0)">ЕКРАН</div>
       <div class="tab" id="t1" onclick="st(1)">СИГНАЛИ</div>
@@ -6306,7 +6306,7 @@ function spdHtml(){
 // Курс = інтеграція кутової швидкості ВЗДОВЖ ВЕРТИКАЛІ (rotationRate · напрям гравітації) — не залежить від кріплення телефона (горизонтально/вертикально) і не «застрягає на 90°», бо Ейлерові кути не використовуються.
 // Зсув гіроскопа (bias) вимірюється, поки стоїмо; знак осі вчиться сам за поворотами GPS. Швидкість — з ECU (k), позиція = останній фікс + v·dt вздовж курсу.
 var DR={on:(lg('dr_on')===true),gap:+lg('dr_gap')||10,sgn:+lg('dr_sgn')||0,sgnAcc:+lg('dr_sgnacc')||0,bias:+lg('dr_bias')||0,g:null,yaw:0,lastT:0,hdg:null,gyroAcc:0,
-  lat:null,lon:null,fixTs:0,fixKmh:0,courseLast:null,gyroSince:0,errN:0,errSum:0,errMax:0,errLast:null,polls:0,pollIv:null,stepIv:null,stepTs:0,zero:null,fixes:0,alt:null};
+  lat:null,lon:null,fixTs:0,fixKmh:0,courseLast:null,gyroSince:0,errN:0,errSum:0,errMax:0,errLast:null,polls:0,pollIv:null,stepIv:null,stepTs:0,zero:null,fixes:0,alt:null,log:[],prevFixLat:null,prevFixLon:null,prevFixTs:0};
 function drWrap(a){ a%=360; if(a<0) a+=360; return a; }
 function drDiff(a,b){ let d=(a-b)%360; if(d>180) d-=360; if(d<-180) d+=360; return d; }
 function drMotion(e){
@@ -6323,11 +6323,23 @@ function drMotion(e){
 function drZero(){ DR.zero={s:0,n:0,until:performance.now()+2000}; DR.g=null; DR.gyroAcc=0; DR.gyroSince=0; try{ sht('Гіроскоп: тримайте нерухомо 2 с'); }catch(e){} }
 function drDist(a,b,c,d){ const R=6371000,x=(d-b)*Math.PI/180*Math.cos((a+c)/2*Math.PI/180),y=(c-a)*Math.PI/180; return R*Math.sqrt(x*x+y*y); }
 function drOnFix(pos){ // реальний GPS-фікс
-  const c=pos.coords, now=Date.now(); DR.fixes++;
+  let c=pos.coords; const now=Date.now(); DR.fixes++;
   if(c.accuracy!=null && c.accuracy>30) return;
   if(DR.lat!=null && DR.on){ const er=drDist(DR.lat,DR.lon,c.latitude,c.longitude); if(er<2000){ DR.errLast=er; DR.errN++; DR.errSum+=er; if(er>DR.errMax) DR.errMax=er; } }
-  const kmh=c.speed!=null?c.speed*3.6:0;
-  if(c.heading!=null && !isNaN(c.heading) && kmh>=8){
+  const prevLat=DR.prevFixLat, prevLon=DR.prevFixLon, prevTs=DR.prevFixTs;
+  let kmh=(c.speed!=null && c.speed>=0)?c.speed*3.6:null, hd=(c.heading!=null && !isNaN(c.heading) && c.heading>=0)?c.heading:null, how='gps';
+  // 24.11.2026: у разових getCurrentPosition iOS часто не дає speed/heading (null/-1) → раніше курс лишався порожнім і позиція «стояла» між фіксами, а потім стрибала.
+  // Тепер швидкість і курс виводимо з руху між двома сусідніми фіксами.
+  if(prevLat!=null && prevTs && now-prevTs>500 && now-prevTs<60000){
+    const dd=drDist(prevLat,prevLon,c.latitude,c.longitude), dts=(now-prevTs)/1000;
+    if(kmh==null){ kmh=dd/dts*3.6; how='Δ'; }
+    if(hd==null && dd>=8){ const y=Math.sin((c.longitude-prevLon)*Math.PI/180)*Math.cos(c.latitude*Math.PI/180), x=Math.cos(prevLat*Math.PI/180)*Math.sin(c.latitude*Math.PI/180)-Math.sin(prevLat*Math.PI/180)*Math.cos(c.latitude*Math.PI/180)*Math.cos((c.longitude-prevLon)*Math.PI/180); hd=drWrap(Math.atan2(y,x)*180/Math.PI); how+='+Δкурс'; }
+  }
+  if(kmh==null) kmh=0;
+  DR.prevFixLat=c.latitude; DR.prevFixLon=c.longitude; DR.prevFixTs=now;
+  try{ DR.log.push(new Date(now).toTimeString().slice(0,8)+' err='+(DR.errLast==null?'—':DR.errLast.toFixed(0))+'м hdgDR='+(DR.hdg==null?'—':Math.round(DR.hdg))+' hdgGPS='+(hd==null?'—':Math.round(hd))+' vDR='+Math.round(drSpeedKmh()||0)+' vGPS='+Math.round(kmh)+' ('+how+') acc='+(c.accuracy!=null?Math.round(c.accuracy):'?')+' gyro='+DR.gyroSince.toFixed(1)+'° sgn='+DR.sgn+' bias='+DR.bias.toFixed(2)); if(DR.log.length>400) DR.log.shift(); }catch(e){}
+  if(hd!=null && kmh>=8){
+    c={latitude:c.latitude,longitude:c.longitude,speed:kmh/3.6,heading:hd,accuracy:c.accuracy,altitude:c.altitude};
     if(DR.courseLast!=null){ const dc=drDiff(c.heading,DR.courseLast); if(Math.abs(dc)>3 && Math.abs(DR.gyroSince)>2){ DR.sgnAcc+=dc*DR.gyroSince; DR.sgn=DR.sgnAcc>=0?1:-1; try{ ls('dr_sgn',DR.sgn); ls('dr_sgnacc',DR.sgnAcc); }catch(e){} } }
     DR.courseLast=c.heading; DR.hdg=c.heading;
   } else if(kmh<8) DR.courseLast=null;
@@ -6367,6 +6379,7 @@ function drRefresh(){
    +'\nGPS-фіксів: '+DR.fixes+' · похибка передбачення: '+(DR.errN?('сер. '+(DR.errSum/DR.errN).toFixed(1)+' м, макс '+DR.errMax.toFixed(0)+' м, ост. '+DR.errLast.toFixed(1)+' м ('+DR.errN+')'):'—')
    +'\nШвидкість для DR: '+Math.round(drSpeedKmh()||0)+' км/год ('+((SPD.raw!=null&&spdCalibrated())?'ECU':'GPS')+')';
 }
+function drCopyLog(){ const t='DR лог (k='+SPD.k.toFixed(3)+', gap='+DR.gap+' с, режим швидкості '+SPD.mode+')\n'+DR.log.join('\n'); try{ navigator.clipboard.writeText(t).then(function(){ sht('Лог DR скопійовано ('+DR.log.length+' рядків)'); }); }catch(e){ try{ const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); sht('Лог DR скопійовано'); }catch(x){} } }
 function drHtml(){
   const bs='flex:1;margin:0;background:#222;color:#fff;';
   if(!DR.iv) DR.iv=setInterval(drRefresh,1000);
@@ -6375,6 +6388,7 @@ function drHtml(){
    +'<div style="font-size:12px;color:var(--muted);padding:2px 5px 8px;line-height:1.5;">GPS опитується рідко, між фіксами позиція рахується за швидкістю ECU і гіроскопом. Перед їздою натисніть «Обнулити гіроскоп» (телефон нерухомо 2 с). Похибка передбачення нижче показує, наскільки це точно.</div>'
    +'<div style="display:flex;gap:6px;padding:0 0 6px;"><button type="button" class="ab" style="'+bs+'" onclick="drSetOn(true)">Увімк.</button><button type="button" class="ab" style="'+bs+'" onclick="drSetOn(false)">Вимк.</button><button type="button" class="ab" style="'+bs+'" onclick="drZero()">Обнулити гіроскоп</button></div>'
    +'<div style="display:flex;gap:6px;padding:0 0 6px;"><button type="button" class="ab" style="'+bs+'" onclick="drSetGap(5)">5 с</button><button type="button" class="ab" style="'+bs+'" onclick="drSetGap(10)">10 с</button><button type="button" class="ab" style="'+bs+'" onclick="drSetGap(20)">20 с</button><button type="button" class="ab" style="'+bs+'" onclick="drSetGap(30)">30 с</button><button type="button" class="ab" style="'+bs+'" onclick="drResetStats()">Скинути</button></div>'
+   +'<div style="padding:0 0 6px;"><button type="button" class="ab" style="'+bs+'" onclick="drCopyLog()">Копіювати лог DR</button></div>'
    +'<pre id="drOut" style="white-space:pre-wrap;font-size:11px;line-height:1.45;margin:4px 0 0;padding:8px;background:#111;border-radius:8px;color:#ddd;"></pre>';
 }
 function _hex(p){ let h=''; for(let i=0;i<p.length;i++) h+=(p[i]<16?'0':'')+p[i].toString(16); return h; }
