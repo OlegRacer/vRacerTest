@@ -557,6 +557,8 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bor
   z-index:5000;border-radius:0!important;overscroll-behavior:none;touch-action:none;}
 /* 21.11.2026: верхній бар лишається видимим поверх повноекранної карти (карта більше не «мала» плитка, що його не перекривала) */
 body:has(.tile.map-fullscreen):not(.rain-mode-active) .tb{z-index:5600;}
+/* 24.11.2026: меню «Налаштувати» (.mb, z-index:100) відкривалось ПІД великою картою (5000) — тепер, коли бар видно, воно має бути над усім */
+body:has(.tile.map-fullscreen) .mb{z-index:5800;}
 /* Темна тема карти — просто інвертуємо кольори звичайних (світлих) OSM-тайлів,
    без окремого набору "нічних" тайлів. */
 /* 16.09.2026: .map-theme-dark (CSS-інверсія) видалено — тема тепер лише
@@ -1229,7 +1231,7 @@ body.hide-cam-radar .cam-radar-badge{display:none !important;}
 
 <div class="mb" id="em">
   <div class="ms">
-    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 24.11.2026 14:40)</span></h3><button class="mc2" id="emc">✕</button></div>
+    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 24.11.2026 20:00)</span></h3><button class="mc2" id="emc">✕</button></div>
     <div class="tbar">
       <div class="tab a" id="t0" onclick="st(0)">ЕКРАН</div>
       <div class="tab" id="t1" onclick="st(1)">СИГНАЛИ</div>
@@ -6306,7 +6308,7 @@ function spdHtml(){
 // Курс = інтеграція кутової швидкості ВЗДОВЖ ВЕРТИКАЛІ (rotationRate · напрям гравітації) — не залежить від кріплення телефона (горизонтально/вертикально) і не «застрягає на 90°», бо Ейлерові кути не використовуються.
 // Зсув гіроскопа (bias) вимірюється, поки стоїмо; знак осі вчиться сам за поворотами GPS. Швидкість — з ECU (k), позиція = останній фікс + v·dt вздовж курсу.
 var DR={on:(lg('dr_on')===true),gap:+lg('dr_gap')||10,sgn:+lg('dr_sgn')||0,sgnAcc:+lg('dr_sgnacc')||0,bias:+lg('dr_bias')||0,g:null,yaw:0,lastT:0,hdg:null,gyroAcc:0,
-  lat:null,lon:null,fixTs:0,fixKmh:0,courseLast:null,gyroSince:0,errN:0,errSum:0,errMax:0,errLast:null,polls:0,pollIv:null,stepIv:null,stepTs:0,zero:null,fixes:0,alt:null,log:[],prevFixLat:null,prevFixLon:null,prevFixTs:0};
+  lat:null,lon:null,fixTs:0,fixKmh:0,courseLast:null,gyroSince:0,errN:0,errSum:0,errMax:0,errLast:null,polls:0,pollIv:null,stepIv:null,stepTs:0,zero:null,fixes:0,alt:null,useGyro:false,lastTurn:0,lastTurnTs:0,pollT:null,log:[],prevFixLat:null,prevFixLon:null,prevFixTs:0};
 function drWrap(a){ a%=360; if(a<0) a+=360; return a; }
 function drDiff(a,b){ let d=(a-b)%360; if(d>180) d-=360; if(d<-180) d+=360; return d; }
 function drMotion(e){
@@ -6318,7 +6320,7 @@ function drMotion(e){
   const still=!(+V.GPS>=1);
   if(DR.zero){ DR.zero.s+=DR.yaw; DR.zero.n++; if(t>DR.zero.until){ if(DR.zero.n>10) DR.bias=DR.zero.s/DR.zero.n; DR.zero=null; try{ ls('dr_bias',DR.bias); }catch(x){} } }
   else if(still) DR.bias+=0.01*(DR.yaw-DR.bias);
-  if(!still && dt>0){ const w=(DR.yaw-DR.bias)*dt; DR.gyroAcc+=w; DR.gyroSince+=w; if(DR.hdg!=null) DR.hdg=drWrap(DR.hdg+(DR.sgn||-1)*w); }
+  if(!still && dt>0){ const w=(DR.yaw-DR.bias)*dt; DR.gyroAcc+=w; DR.gyroSince+=w; if(DR.useGyro && DR.hdg!=null) DR.hdg=drWrap(DR.hdg+(DR.sgn||-1)*w); } // 24.11.2026: за логом поїздки гіроскоп на кермі не корелює зі справжніми поворотами (r≈-0.12) → курс тримаємо з GPS, гіроскоп лише пишемо в лог
 }
 function drZero(){ DR.zero={s:0,n:0,until:performance.now()+2000}; DR.g=null; DR.gyroAcc=0; DR.gyroSince=0; try{ sht('Гіроскоп: тримайте нерухомо 2 с'); }catch(e){} }
 function drDist(a,b,c,d){ const R=6371000,x=(d-b)*Math.PI/180*Math.cos((a+c)/2*Math.PI/180),y=(c-a)*Math.PI/180; return R*Math.sqrt(x*x+y*y); }
@@ -6332,7 +6334,7 @@ function drOnFix(pos){ // реальний GPS-фікс
   // Тепер швидкість і курс виводимо з руху між двома сусідніми фіксами.
   if(prevLat!=null && prevTs && now-prevTs>500 && now-prevTs<60000){
     const dd=drDist(prevLat,prevLon,c.latitude,c.longitude), dts=(now-prevTs)/1000;
-    if(kmh==null){ kmh=dd/dts*3.6; how='Δ'; }
+    if(kmh==null){ kmh=(dd<Math.max(c.accuracy||10,10))?0:dd/dts*3.6; how='Δ'; }   // зсув менший за точність — це шум, а не рух
     if(hd==null && dd>=8){ const y=Math.sin((c.longitude-prevLon)*Math.PI/180)*Math.cos(c.latitude*Math.PI/180), x=Math.cos(prevLat*Math.PI/180)*Math.sin(c.latitude*Math.PI/180)-Math.sin(prevLat*Math.PI/180)*Math.cos(c.latitude*Math.PI/180)*Math.cos((c.longitude-prevLon)*Math.PI/180); hd=drWrap(Math.atan2(y,x)*180/Math.PI); how+='+Δкурс'; }
   }
   if(kmh==null) kmh=0;
@@ -6340,15 +6342,15 @@ function drOnFix(pos){ // реальний GPS-фікс
   try{ DR.log.push(new Date(now).toTimeString().slice(0,8)+' err='+(DR.errLast==null?'—':DR.errLast.toFixed(0))+'м hdgDR='+(DR.hdg==null?'—':Math.round(DR.hdg))+' hdgGPS='+(hd==null?'—':Math.round(hd))+' vDR='+Math.round(drSpeedKmh()||0)+' vGPS='+Math.round(kmh)+' ('+how+') acc='+(c.accuracy!=null?Math.round(c.accuracy):'?')+' gyro='+DR.gyroSince.toFixed(1)+'° sgn='+DR.sgn+' bias='+DR.bias.toFixed(2)); if(DR.log.length>400) DR.log.shift(); }catch(e){}
   if(hd!=null && kmh>=8){
     c={latitude:c.latitude,longitude:c.longitude,speed:kmh/3.6,heading:hd,accuracy:c.accuracy,altitude:c.altitude};
-    if(DR.courseLast!=null){ const dc=drDiff(c.heading,DR.courseLast); if(Math.abs(dc)>3 && Math.abs(DR.gyroSince)>2){ DR.sgnAcc+=dc*DR.gyroSince; DR.sgn=DR.sgnAcc>=0?1:-1; try{ ls('dr_sgn',DR.sgn); ls('dr_sgnacc',DR.sgnAcc); }catch(e){} } }
+    if(DR.courseLast!=null){ const dc=drDiff(c.heading,DR.courseLast); DR.lastTurn=Math.abs(dc); DR.lastTurnTs=Date.now(); if(Math.abs(dc)>3 && Math.abs(DR.gyroSince)>2){ DR.sgnAcc+=dc*DR.gyroSince; DR.sgn=DR.sgnAcc>=0?1:-1; try{ ls('dr_sgn',DR.sgn); ls('dr_sgnacc',DR.sgnAcc); }catch(e){} } }
     DR.courseLast=c.heading; DR.hdg=c.heading;
-  } else if(kmh<8) DR.courseLast=null;
+  } else if(kmh<8){ DR.courseLast=null; if(kmh<3) DR.hdg=null; }   // після зупинки старий курс не екстраполюємо, доки GPS не дасть новий
   DR.gyroSince=0; DR.lat=c.latitude; DR.lon=c.longitude; DR.fixTs=now; DR.fixKmh=kmh; DR.alt=c.altitude; DR.stepTs=now;
 }
 function drSpeedKmh(){ // швидкість для екстраполяції: ECU (після калібрування), інакше остання GPS
   const now=Date.now();
-  if(SPD.raw!=null && now-SPD.rawTs<2000 && spdCalibrated()) return spdEcuKmh();
-  return (now-DR.fixTs<15000)?DR.fixKmh:0;
+  if(SPD.raw!=null && now-SPD.rawTs<2000){ if(SPD.raw===0) return 0; if(spdCalibrated()) return spdEcuKmh(); }   // ECU=0 → стоїмо, маркер не повзе
+  const v=(now-DR.fixTs<15000)?DR.fixKmh:0; return v<4?0:v;
 }
 function drStep(){
   if(!DR.on || DR.lat==null) return;
@@ -6358,6 +6360,9 @@ function drStep(){
   DR.lat+=d*Math.cos(h)/111320; DR.lon+=d*Math.sin(h)/(111320*Math.cos(DR.lat*Math.PI/180));
   gpsOnPos({coords:{latitude:DR.lat,longitude:DR.lon,heading:DR.hdg,speed:v,accuracy:25,altitude:DR.alt},timestamp:now,_dr:true});
 }
+function drNextDelay(){ // 24.11.2026: після повороту / різкої зміни швидкості опитуємо частіше (2 с), на рівній — раз на gap
+  const a=DR.lastTurn||0; return (Date.now()-DR.lastTurnTs<6000 && a>10)?2000:DR.gap*1000;
+}
 function drPoll(){
   if(!DR.on||document.hidden&&false) return; DR.polls++;
   try{ navigator.geolocation.getCurrentPosition(gpsOnPos,gpsOnErr,{enableHighAccuracy:true,maximumAge:0,timeout:12000}); }catch(e){}
@@ -6365,9 +6370,9 @@ function drPoll(){
 function drStart(){
   if(DR.pollIv) return;
   if(gpsId!=null){ try{ navigator.geolocation.clearWatch(gpsId); }catch(e){} gpsId=null; }
-  DR.pollIv=setInterval(drPoll,DR.gap*1000); DR.stepIv=setInterval(drStep,1000); drPoll();
+  DR.pollIv=1; DR.stepIv=setInterval(drStep,1000); (function loop(){ if(!DR.pollIv) return; drPoll(); DR.pollT=setTimeout(loop,drNextDelay()); })();
 }
-function drStop(){ if(DR.pollIv){ clearInterval(DR.pollIv); DR.pollIv=null; } if(DR.stepIv){ clearInterval(DR.stepIv); DR.stepIv=null; } }
+function drStop(){ if(DR.pollIv){ clearTimeout(DR.pollT); DR.pollIv=null; } if(DR.stepIv){ clearInterval(DR.stepIv); DR.stepIv=null; } }
 function drSetOn(on){ DR.on=!!on; try{ ls('dr_on',DR.on); }catch(e){} drStop(); if(DR.on){ try{ startMotionSensors(); }catch(e){} drStart(); } else { DR.lat=null; startGPS(); } drRefresh(); }
 function drSetGap(s){ DR.gap=s; try{ ls('dr_gap',s); }catch(e){} if(DR.on){ drStop(); drStart(); } drRefresh(); }
 function drResetStats(){ DR.errN=0; DR.errSum=0; DR.errMax=0; DR.errLast=null; DR.fixes=0; DR.polls=0; DR.sgn=0; DR.sgnAcc=0; try{ ls('dr_sgn',0); ls('dr_sgnacc',0); }catch(e){} drRefresh(); }
